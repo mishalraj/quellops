@@ -1,0 +1,24 @@
+# Light profile for `open-telemetry/opentelemetry-demo` on small local Kind clusters.
+# Goal: keep enough microservices to produce distributed traces, while removing the
+# largest memory consumers and optional UI stacks.
+
+# Disable heavy optional stacks
+jaeger:
+  enabled: false
+
+prometheus:
+  enabled: false
+
+grafana:
+  enabled: false
+
+opensearch:
+  enabled: false
+
+# Disable Kafka + Accounting (accounting waits for kafka)
+components:
+  kafka:
+    enabled: false
+  accounting:
+    enabled: false
+
