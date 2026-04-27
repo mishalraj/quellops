@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 from typing import Any
@@ -59,7 +60,8 @@ class TraceIngestServicer(TraceServiceServicer):
 
 
 def serve_otlp_grpc(bind: str, stats: StatsStore) -> grpc.Server:
-    server = grpc.server(None)
+    # gRPC Python requires an executor; passing None can lead to broken/closed connections.
+    server = grpc.server(ThreadPoolExecutor(max_workers=8))
     add_TraceServiceServicer_to_server(TraceIngestServicer(stats), server)
     server.add_insecure_port(bind)
     server.start()
