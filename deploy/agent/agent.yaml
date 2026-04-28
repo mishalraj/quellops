@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aidbg-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aidbg-agent
+  namespace: aidbg-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aidbg-agent-readonly
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aidbg-agent-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aidbg-agent-readonly
+subjects:
+  - kind: ServiceAccount
+    name: aidbg-agent
+    namespace: aidbg-agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aidbg-agent
+  namespace: aidbg-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aidbg-agent
+  template:
+    metadata:
+      labels:
+        app: aidbg-agent
+    spec:
+      serviceAccountName: aidbg-agent
+      containers:
+        - name: agent
+          image: ghcr.io/placeholder/aidbg-agent:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AIDBG_BACKEND_EVENT_URL
+              value: "http://aidbg-backend.aidbg:8088/ingest/k8s"
+            - name: AIDBG_CLUSTER
+              value: ""
+          args:
+            - "-backend-url=$(AIDBG_BACKEND_EVENT_URL)"
+            - "-cluster=$(AIDBG_CLUSTER)"
+

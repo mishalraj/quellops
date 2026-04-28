@@ -1,0 +1,186 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+)
+
+type Event struct {
+	Type      string            `json:"type"`
+	AtUnixMs  int64             `json:"at_unix_ms"`
+	Cluster   string            `json:"cluster,omitempty"`
+	Namespace string            `json:"namespace,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	Kind      string            `json:"kind,omitempty"`
+	Reason    string            `json:"reason,omitempty"`
+	Message   string            `json:"message,omitempty"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	Fields    map[string]string `json:"fields,omitempty"`
+}
+
+func postEvent(ctx context.Context, endpoint string, ev Event) error {
+	b, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("non-2xx from backend: %s", resp.Status)
+	}
+	return nil
+}
+
+func main() {
+	var backendURL string
+	var clusterName string
+	flag.StringVar(&backendURL, "backend-url", getenv("AIDBG_BACKEND_EVENT_URL", "http://aidbg-backend.aidbg:8088/ingest/k8s"), "backend ingest URL")
+	flag.StringVar(&clusterName, "cluster", getenv("AIDBG_CLUSTER", ""), "cluster name (optional)")
+	flag.Parse()
+
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load in-cluster kube config: %v\n", err)
+		os.Exit(1)
+	}
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create k8s client: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stopCh := make(chan struct{})
+
+	factory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
+
+	// Deployments
+	deployInf := factory.Apps().V1().Deployments().Informer()
+	_, _ = deployInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			meta := mustMeta(obj)
+			ev := Event{
+				Type:      "k8s.deployment.added",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      "Deployment",
+				Labels:    meta.Labels,
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			meta := mustMeta(newObj)
+			ev := Event{
+				Type:      "k8s.deployment.updated",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      "Deployment",
+				Labels:    meta.Labels,
+				Fields: map[string]string{
+					"resource_version": meta.ResourceVersion,
+				},
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+	})
+
+	// Pods
+	podInf := factory.Core().V1().Pods().Informer()
+	_, _ = podInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			meta := mustMeta(obj)
+			ev := Event{
+				Type:      "k8s.pod.added",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      "Pod",
+				Labels:    meta.Labels,
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			meta := mustMeta(newObj)
+			ev := Event{
+				Type:      "k8s.pod.updated",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      "Pod",
+				Labels:    meta.Labels,
+				Fields: map[string]string{
+					"resource_version": meta.ResourceVersion,
+				},
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+	})
+
+	// Events
+	evInf := factory.Core().V1().Events().Informer()
+	_, _ = evInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			meta, reason, message, involvedKind, involvedName := mustEventSummary(obj)
+			ev := Event{
+				Type:      "k8s.event",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      involvedKind,
+				Reason:    reason,
+				Message:   message,
+				Fields: map[string]string{
+					"involved_name": involvedName,
+				},
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+	})
+
+	factory.Start(stopCh)
+	factory.WaitForCacheSync(stopCh)
+
+	// shutdown on signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	close(stopCh)
+	cancel()
+}
+
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
