@@ -8,4 +8,4 @@ inject:
 assert:
   expect_top_types:
     - recent_deploy
-  allow_top_k: 3
+  allow_top_k: 1

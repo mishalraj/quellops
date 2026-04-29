@@ -230,6 +230,28 @@ class SignalStore:
         dependency_down_candidates: list[dict[str, Any]] = []
         for ev in reversed(recent_events):
             t = str(ev.get("type", ""))
+            fields = ev.get("fields", {}) or {}
+            desired_replicas = str(fields.get("desired_replicas", ""))
+            if desired_replicas == "0":
+                age_s = (now_ms - int(ev.get("at_unix_ms", now_ms))) / 1000.0
+                if age_s <= 1800:
+                    dependency_down_candidates.append(
+                        {
+                            "type": "dependency_unavailable",
+                            "entity": ev.get("name"),
+                            "namespace": ev.get("namespace"),
+                            "score": max(0.4, 1.1 - (age_s / 2400.0)),
+                            "evidence": {
+                                "event_type": t,
+                                "desired_replicas": desired_replicas,
+                                "updated_replicas": fields.get("updated_replicas"),
+                                "ready_replicas": fields.get("ready_replicas"),
+                            },
+                        }
+                    )
+                    if len(dependency_down_candidates) >= 5:
+                        break
+                continue
             if "pod" not in t and "event" not in t:
                 continue
             msg = str(ev.get("message", "")).lower()

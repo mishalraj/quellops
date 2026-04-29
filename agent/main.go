@@ -102,6 +102,15 @@ func main() {
 			} else if status == "failed" {
 				evType = "deploy.failed"
 			}
+			fields := map[string]string{
+				"resource_version": meta.ResourceVersion,
+				"rollout_status":   status,
+			}
+			if desired, updated, ready, ok := deploymentReplicaSummary(newObj); ok {
+				fields["desired_replicas"] = strconv.Itoa(int(desired))
+				fields["updated_replicas"] = strconv.Itoa(int(updated))
+				fields["ready_replicas"] = strconv.Itoa(int(ready))
+			}
 			ev := Event{
 				Type:      evType,
 				AtUnixMs:  time.Now().UnixMilli(),
@@ -110,10 +119,7 @@ func main() {
 				Name:      meta.Name,
 				Kind:      "Deployment",
 				Labels:    meta.Labels,
-				Fields: map[string]string{
-					"resource_version": meta.ResourceVersion,
-					"rollout_status":   status,
-				},
+				Fields:    fields,
 			}
 			_ = postEvent(ctx, backendURL, ev)
 		},

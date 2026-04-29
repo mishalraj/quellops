@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python3 scripts/validate_scenarios.py
+if python3 -c "import yaml" >/dev/null 2>&1; then
+  export PYTHON_BIN="python3"
+else
+  if [[ ! -d ".venv" ]]; then
+    python3 -m venv .venv
+  fi
+  . .venv/bin/activate
+  if ! python -c "import yaml" >/dev/null 2>&1; then
+    python -m pip install -r backend/requirements.txt >/dev/null
+  fi
+  export PYTHON_BIN="python"
+fi
+
+"$PYTHON_BIN" scripts/validate_scenarios.py
 
 SCENARIOS=(
   deploy_latency

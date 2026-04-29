@@ -1,6 +1,7 @@
 package main
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,5 +33,16 @@ func mustEventSummary(obj any) (*metav1.ObjectMeta, string, string, string, stri
 	involvedKind := ev.InvolvedObject.Kind
 	involvedName := ev.InvolvedObject.Name
 	return meta, ev.Reason, ev.Message, involvedKind, involvedName
+}
+
+func deploymentReplicaSummary(obj any) (desired int32, updated int32, ready int32, ok bool) {
+	deploy, ok := obj.(*appsv1.Deployment)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	if deploy.Spec.Replicas != nil {
+		desired = *deploy.Spec.Replicas
+	}
+	return desired, deploy.Status.UpdatedReplicas, deploy.Status.ReadyReplicas, true
 }
 

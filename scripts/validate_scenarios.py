@@ -9,6 +9,7 @@ import yaml
 REQUIRED_KEYS = {"name", "description", "target", "inject", "assert"}
 TARGET_KEYS = {"namespace", "deployment"}
 INJECT_KEYS = {"type"}
+ALLOWED_INJECT_TYPES = {"rollout_restart", "annotate_placeholder", "scale_to_zero", "load_spike_only"}
 
 
 def main() -> int:
@@ -24,6 +25,25 @@ def main() -> int:
             errors.append(f"{path}: target must include {sorted(TARGET_KEYS)}")
         if INJECT_KEYS - set((data.get("inject") or {}).keys()):
             errors.append(f"{path}: inject must include {sorted(INJECT_KEYS)}")
+        inject_type = (data.get("inject") or {}).get("type")
+        if inject_type not in ALLOWED_INJECT_TYPES:
+            errors.append(
+                f"{path}: inject.type must be one of {sorted(ALLOWED_INJECT_TYPES)}"
+            )
+        assert_cfg = data.get("assert") or {}
+        expect_top_types = assert_cfg.get("expect_top_types")
+        not_top_1_type = assert_cfg.get("not_top_1_type")
+        allow_top_k = assert_cfg.get("allow_top_k", 3)
+        if expect_top_types is not None and not isinstance(expect_top_types, list):
+            errors.append(f"{path}: assert.expect_top_types must be a list when present")
+        if not_top_1_type is not None and not isinstance(not_top_1_type, str):
+            errors.append(f"{path}: assert.not_top_1_type must be a string when present")
+        if not isinstance(allow_top_k, int) or allow_top_k <= 0:
+            errors.append(f"{path}: assert.allow_top_k must be a positive integer")
+        if not expect_top_types and not not_top_1_type:
+            errors.append(
+                f"{path}: assert must define expect_top_types and/or not_top_1_type"
+            )
     if errors:
         for e in errors:
             print(f"ERROR: {e}")

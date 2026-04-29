@@ -6,4 +6,7 @@ target:
 inject:
   type: load_spike_only
 assert:
+  expect_top_types:
+    - traffic_spike
+  allow_top_k: 3
   not_top_1_type: recent_deploy

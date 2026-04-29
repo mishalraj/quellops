@@ -7,5 +7,5 @@ inject:
   type: scale_to_zero
 assert:
   expect_top_types:
-    - recent_deploy
-  allow_top_k: 3
+    - dependency_unavailable
+  allow_top_k: 1
