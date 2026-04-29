@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Incident",
+  "type": "object",
+  "required": ["generated_at_unix_ms", "anomalies", "top_causes", "confidence", "graph_snapshot"],
+  "properties": {
+    "generated_at_unix_ms": { "type": "integer" },
+    "anomalies": { "type": "array", "items": { "$ref": "anomaly.schema.json" } },
+    "top_causes": { "type": "array", "items": { "$ref": "candidate_cause.schema.json" } },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "graph_snapshot": { "$ref": "graph_snapshot.schema.json" }
+  },
+  "additionalProperties": false
+}

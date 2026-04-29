@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-import threading
-
 import uvicorn
 
 from .api import create_app
@@ -23,7 +20,7 @@ def main() -> None:
     otlp_server = serve_otlp_grpc(settings.otlp_grpc_bind, stats)
 
     # Start HTTP API (FastAPI)
-    app = create_app(stats)
+    app = create_app(stats, settings)
     http_host, http_port = _split_host_port(settings.http_bind)
 
     config = uvicorn.Config(app=app, host=http_host, port=http_port, log_level="info")

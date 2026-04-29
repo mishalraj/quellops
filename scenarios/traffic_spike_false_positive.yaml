@@ -1,0 +1,9 @@
+name: traffic_spike_false_positive
+description: Increase load without deployment; deploy should not be top-1.
+target:
+  namespace: otel-demo
+  deployment: frontend
+inject:
+  type: load_spike_only
+assert:
+  not_top_1_type: recent_deploy

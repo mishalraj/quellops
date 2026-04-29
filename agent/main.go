@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -94,13 +95,55 @@ func main() {
 		},
 		UpdateFunc: func(oldObj, newObj any) {
 			meta := mustMeta(newObj)
+			status := deploymentStatus(newObj)
+			evType := "deploy.started"
+			if status == "completed" {
+				evType = "deploy.completed"
+			} else if status == "failed" {
+				evType = "deploy.failed"
+			}
 			ev := Event{
-				Type:      "k8s.deployment.updated",
+				Type:      evType,
 				AtUnixMs:  time.Now().UnixMilli(),
 				Cluster:   clusterName,
 				Namespace: meta.Namespace,
 				Name:      meta.Name,
 				Kind:      "Deployment",
+				Labels:    meta.Labels,
+				Fields: map[string]string{
+					"resource_version": meta.ResourceVersion,
+					"rollout_status":   status,
+				},
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+	})
+
+	// ReplicaSets
+	rsInf := factory.Apps().V1().ReplicaSets().Informer()
+	_, _ = rsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			meta := mustMeta(obj)
+			ev := Event{
+				Type:      "k8s.replicaset.added",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      "ReplicaSet",
+				Labels:    meta.Labels,
+			}
+			_ = postEvent(ctx, backendURL, ev)
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			meta := mustMeta(newObj)
+			ev := Event{
+				Type:      "k8s.replicaset.updated",
+				AtUnixMs:  time.Now().UnixMilli(),
+				Cluster:   clusterName,
+				Namespace: meta.Namespace,
+				Name:      meta.Name,
+				Kind:      "ReplicaSet",
 				Labels:    meta.Labels,
 				Fields: map[string]string{
 					"resource_version": meta.ResourceVersion,
@@ -182,5 +225,18 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func deploymentStatus(obj any) string {
+	m := mustMeta(obj)
+	genS := m.Annotations["deployment.kubernetes.io/revision"]
+	if genS == "" {
+		return "in_progress"
+	}
+	if _, err := strconv.Atoi(genS); err != nil {
+		return "in_progress"
+	}
+	// Lightweight heuristic only; full rollout condition inspection can be added later.
+	return "completed"
 }
 

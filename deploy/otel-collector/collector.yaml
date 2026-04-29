@@ -55,9 +55,9 @@ spec:
           args: ["--config=/conf/collector.yaml"]
           env:
             - name: AIDBG_BACKEND_OTLP_ENDPOINT
-              # Avoid relying on cluster DNS for host.docker.internal (can be flaky in Kind).
-              # Docker Desktop host-gateway IP (macOS) is typically 192.168.65.254.
-              value: "192.168.65.254:4317"
+              # Local-only default: backend runs on host via Docker Compose.
+              # host.docker.internal is portable on Docker Desktop (Windows/macOS).
+              value: "host.docker.internal:4317"
           ports:
             - containerPort: 4317
               name: otlp-grpc

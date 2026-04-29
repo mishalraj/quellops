@@ -1,0 +1,11 @@
+name: deploy_latency
+description: Roll a deployment and expect deploy-ranked cause.
+target:
+  namespace: otel-demo
+  deployment: frontend
+inject:
+  type: rollout_restart
+assert:
+  expect_top_types:
+    - recent_deploy
+  allow_top_k: 3

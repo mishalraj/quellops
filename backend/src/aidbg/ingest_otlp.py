@@ -16,6 +16,8 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
 )
 
+from .engine import SignalStore, SpanPoint
+
 
 @dataclass
 class IngestStats:
@@ -25,16 +27,22 @@ class IngestStats:
 
 
 class StatsStore:
-    def __init__(self) -> None:
+    def __init__(self, signals: SignalStore | None = None) -> None:
         self._lock = threading.Lock()
         self._stats = IngestStats()
+        self._signals = signals or SignalStore()
 
-    def add(self, span_count: int) -> None:
+    @property
+    def signals(self) -> SignalStore:
+        return self._signals
+
+    def add(self, span_count: int, span_points: list[SpanPoint], edges: list[tuple[float, str, str, float, bool]]) -> None:
         now = time.time()
         with self._lock:
             self._stats.requests_received += 1
             self._stats.spans_received += span_count
             self._stats.last_ingest_unix_s = now
+        self._signals.add_spans(span_points, edges)
 
     def snapshot(self) -> IngestStats:
         with self._lock:
@@ -50,12 +58,50 @@ class TraceIngestServicer(TraceServiceServicer):
         self._stats = stats
 
     def Export(self, request, context) -> ExportTraceServiceResponse:  # type: ignore[override]
-        # Count spans without storing raw spans (MVP: aggregated signal only)
+        # MVP keeps short-lived span metadata in memory for graph/anomaly analysis.
         span_count = 0
+        span_points: list[SpanPoint] = []
+        span_to_service: dict[tuple[str, str], str] = {}
+        pending_edges: list[tuple[float, str, str, float, bool, str, str]] = []
         for rs in request.resource_spans:
+            service = "unknown"
+            for attr in rs.resource.attributes:
+                if attr.key == "service.name":
+                    service = attr.value.string_value or "unknown"
+                    break
             for ils in rs.scope_spans:
-                span_count += len(ils.spans)
-        self._stats.add(span_count)
+                for sp in ils.spans:
+                    span_count += 1
+                    latency_ms = max(
+                        0.0, (sp.end_time_unix_nano - sp.start_time_unix_nano) / 1_000_000.0
+                    )
+                    is_error = int(sp.status.code) == 2
+                    trace_id = sp.trace_id.hex()
+                    span_id = sp.span_id.hex()
+                    parent_span_id = sp.parent_span_id.hex()
+                    at_s = sp.end_time_unix_nano / 1_000_000_000.0 if sp.end_time_unix_nano else time.time()
+                    point = SpanPoint(
+                        at_unix_s=at_s,
+                        trace_id=trace_id,
+                        span_id=span_id,
+                        parent_span_id=parent_span_id,
+                        service=service,
+                        latency_ms=latency_ms,
+                        is_error=is_error,
+                    )
+                    span_points.append(point)
+                    span_to_service[(trace_id, span_id)] = service
+                    pending_edges.append(
+                        (at_s, trace_id, parent_span_id, service, latency_ms, is_error, trace_id, span_id)
+                    )
+        edges: list[tuple[float, str, str, float, bool]] = []
+        for at_s, trace_id, parent_span_id, child_service, latency_ms, is_error, _, _ in pending_edges:
+            if not parent_span_id:
+                continue
+            parent_service = span_to_service.get((trace_id, parent_span_id))
+            if parent_service and parent_service != child_service:
+                edges.append((at_s, parent_service, child_service, latency_ms, is_error))
+        self._stats.add(span_count, span_points, edges)
         return ExportTraceServiceResponse()
 
 

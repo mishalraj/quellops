@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CandidateCause",
+  "type": "object",
+  "required": ["type", "entity", "score", "evidence"],
+  "properties": {
+    "type": { "type": "string" },
+    "entity": { "type": "string" },
+    "score": { "type": "number" },
+    "evidence": { "type": "object" }
+  },
+  "additionalProperties": true
+}

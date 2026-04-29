@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aidbg
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: aidbg-auto-instrumentation
+webhooks:
+  - name: inject.otel.aidbg.local
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Ignore
+    clientConfig:
+      service:
+        namespace: aidbg
+        name: aidbg-backend
+        path: /webhook/mutate
+        port: 8088
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    namespaceSelector:
+      matchLabels:
+        aidbg-instrument: "true"

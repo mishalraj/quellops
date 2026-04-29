@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GraphSnapshot",
+  "type": "object",
+  "required": ["window_s", "nodes", "edges"],
+  "properties": {
+    "window_s": { "type": "integer", "minimum": 1 },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "request_count", "error_rate"],
+        "properties": {
+          "id": { "type": "string" },
+          "request_count": { "type": "integer", "minimum": 0 },
+          "error_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "request_count", "error_rate", "p95_latency_ms"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "request_count": { "type": "integer", "minimum": 0 },
+          "error_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "p95_latency_ms": { "type": "number", "minimum": 0.0 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

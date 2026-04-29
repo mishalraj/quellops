@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Anomaly",
+  "type": "object",
+  "required": ["kind", "entity", "magnitude", "start_unix_s"],
+  "properties": {
+    "kind": { "type": "string" },
+    "entity": { "type": "string" },
+    "magnitude": { "type": "number" },
+    "start_unix_s": { "type": "number" }
+  },
+  "additionalProperties": true
+}

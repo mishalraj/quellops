@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpanSummary",
+  "type": "object",
+  "required": ["service", "request_count", "error_rate", "p50_latency_ms", "p95_latency_ms"],
+  "properties": {
+    "service": { "type": "string" },
+    "request_count": { "type": "integer", "minimum": 0 },
+    "error_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "p50_latency_ms": { "type": "number", "minimum": 0.0 },
+    "p95_latency_ms": { "type": "number", "minimum": 0.0 }
+  },
+  "additionalProperties": false
+}

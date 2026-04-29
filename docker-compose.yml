@@ -1,0 +1,14 @@
+services:
+  aidbg-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: aidbg-backend
+    ports:
+      - "4317:4317"
+      - "8088:8088"
+    environment:
+      AIDBG_OTLP_GRPC_BIND: "0.0.0.0:4317"
+      AIDBG_HTTP_BIND: "0.0.0.0:8088"
+      AIDBG_CURRENT_WINDOW_S: "300"
+      AIDBG_BASELINE_WINDOW_S: "900"

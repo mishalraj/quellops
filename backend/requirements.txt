@@ -5,3 +5,5 @@ protobuf==5.29.5
 opentelemetry-proto==1.36.0
 pydantic==2.11.4
 python-dotenv==1.1.0
+openai==1.79.0
+PyYAML==6.0.2

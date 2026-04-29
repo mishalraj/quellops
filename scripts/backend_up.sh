@@ -2,6 +2,12 @@
 set -euo pipefail
 
 PY="${PYTHON:-python3}"
+BACKEND_MODE="${BACKEND_MODE:-venv}"
+
+if [[ "$BACKEND_MODE" == "docker" ]]; then
+  docker compose up --build aidbg-backend
+  exit 0
+fi
 
 if [ ! -d ".venv" ]; then
   "$PY" -m venv .venv
