@@ -3,191 +3,506 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>aidbg — live incident view</title>
+  <title>aidbg — operations dashboard</title>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" crossorigin="anonymous"></script>
   <style>
     :root {
-      --bg: #0f1419;
-      --panel: #1a2332;
-      --border: #2d3a4d;
-      --text: #e7ecf3;
-      --muted: #8b9cb3;
-      --accent: #3d9cf0;
+      --bg: #0a0e14;
+      --sidebar: #0d1219;
+      --panel: #131b26;
+      --panel2: #1a2433;
+      --border: #2a3548;
+      --text: #e8edf4;
+      --muted: #7a8fa6;
+      --accent: #4da3ff;
+      --accent-dim: #2a5a8a;
       --ok: #3ecf8e;
-      --warn: #f0b429;
+      --warn: #ebc347;
+      --danger: #f07178;
+      --purple: #c678dd;
+      --font: "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, sans-serif;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
+    html, body { margin: 0; height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); }
+    .app {
+      display: grid;
+      grid-template-columns: 260px 1fr;
       min-height: 100vh;
     }
-    header {
-      padding: 1rem 1.5rem;
+    @media (max-width: 960px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--border); }
+    }
+    .sidebar {
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 1.25rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .brand {
+      padding-bottom: 0.5rem;
       border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 1rem;
-      justify-content: space-between;
     }
-    header h1 {
+    .brand h1 {
       margin: 0;
-      font-size: 1.15rem;
-      font-weight: 600;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
     }
-    header .sub { color: var(--muted); font-size: 0.85rem; }
-    .controls {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      flex-wrap: wrap;
+    .brand p {
+      margin: 0.35rem 0 0;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.4;
     }
-    .controls label { font-size: 0.85rem; color: var(--muted); }
-    .controls a {
+    .nav-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+    .nav a {
+      display: block;
+      padding: 0.4rem 0.5rem;
       color: var(--accent);
       text-decoration: none;
       font-size: 0.85rem;
+      border-radius: 6px;
     }
-    .controls a:hover { text-decoration: underline; }
-    main {
-      padding: 1rem 1.5rem 2rem;
-      max-width: 1200px;
-      margin: 0 auto;
+    .nav a:hover { background: var(--panel); }
+    .quick-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+    .qa-row {
+      display: flex;
+      gap: 0.35rem;
+      align-items: stretch;
     }
-    .grid {
+    .qa-row select {
+      flex: 1;
+      min-width: 0;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.75rem;
+    }
+    .qa-row button {
+      background: var(--accent-dim);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.55rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .qa-row button:hover { filter: brightness(1.15); }
+    .qa-hint {
+      font-size: 0.68rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+    .dot.off { background: var(--danger); }
+    .main {
+      overflow: auto;
+      padding: 1rem 1.25rem 2rem;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .topbar .meta { font-size: 0.8rem; color: var(--muted); }
+    .topbar .controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .topbar label { font-size: 0.8rem; color: var(--muted); }
+    .topbar button {
+      background: var(--panel2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .topbar button:hover { border-color: var(--accent); }
+    #errBox {
+      display: none;
+      background: rgba(240, 113, 120, 0.12);
+      border: 1px solid var(--danger);
+      color: #ffb4b8;
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+    .kpis {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1rem;
       margin-bottom: 1.25rem;
     }
-    .card {
-      background: var(--panel);
+    .kpi {
+      background: linear-gradient(145deg, var(--panel) 0%, var(--panel2) 100%);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 1rem 1.1rem;
+      position: relative;
+      overflow: hidden;
     }
-    .card h2 {
-      margin: 0 0 0.5rem;
-      font-size: 0.75rem;
+    .kpi::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; width: 3px; height: 100%;
+      background: var(--accent);
+      opacity: 0.85;
+    }
+    .kpi.warn::before { background: var(--warn); }
+    .kpi.ok::before { background: var(--ok); }
+    .kpi h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.68rem;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.07em;
       color: var(--muted);
       font-weight: 600;
     }
-    .metric { font-size: 1.35rem; font-weight: 600; }
-    .metric small { display: block; font-size: 0.8rem; color: var(--muted); font-weight: 400; margin-top: 0.25rem; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.88rem;
+    .kpi .val { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.03em; }
+    .kpi .sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; }
+    .kpi-ring-wrap {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
     }
-    th, td {
-      text-align: left;
-      padding: 0.5rem 0.6rem;
-      border-bottom: 1px solid var(--border);
+    .ring {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) var(--p, 0%), var(--border) 0);
+      display: grid;
+      place-items: center;
     }
-    th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
-    tr:last-child td { border-bottom: none; }
-    .pill {
-      display: inline-block;
-      padding: 0.15rem 0.45rem;
-      border-radius: 6px;
+    .ring-inner {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--panel);
+      display: grid;
+      place-items: center;
       font-size: 0.75rem;
-      background: #243044;
-      color: var(--accent);
+      font-weight: 700;
     }
-    pre {
+    .section {
+      margin-top: 1.35rem;
+    }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .section-head h2 {
       margin: 0;
-      padding: 1rem;
-      background: #0c1017;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      overflow: auto;
-      font-size: 0.78rem;
-      max-height: 320px;
-    }
-    .section-title {
       font-size: 0.95rem;
       font-weight: 600;
-      margin: 1.25rem 0 0.5rem;
     }
-    .err {
-      color: #f07178;
-      font-size: 0.9rem;
+    .section-head span { font-size: 0.75rem; color: var(--muted); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
     }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--ok);
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
+    #graphNetwork {
+      width: 100%;
+      height: 340px;
+      background: #0c1018;
+    }
+    .bars-wrap { padding: 0.75rem 1rem 1rem; max-height: 340px; overflow-y: auto; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 100px 1fr 52px;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      font-size: 0.78rem;
+    }
+    .bar-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track {
+      height: 10px;
+      background: #1e2838;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 5px;
+      background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+      transition: width 0.35s ease;
+    }
+    .bar-n { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    .causes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.75rem;
+      padding: 0.75rem;
+    }
+    .cause-card {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem;
+      border-left: 3px solid var(--accent);
+    }
+    .cause-card.dep { border-left-color: var(--danger); }
+    .cause-card.deploy { border-left-color: var(--warn); }
+    .cause-card.unknown { border-left-color: var(--purple); }
+    .cause-card .tag {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      margin-bottom: 0.35rem;
+    }
+    .cause-card.dep .tag { color: var(--danger); }
+    .cause-card.deploy .tag { color: var(--warn); }
+    .cause-card.unknown .tag { color: var(--purple); }
+    .cause-card .entity { font-size: 1rem; font-weight: 600; }
+    .cause-card .score-row { margin-top: 0.5rem; }
+    .cause-card .score-bar {
+      height: 6px;
+      background: #1e2838;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 0.25rem;
+    }
+    .cause-card .score-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+    .cause-card .ev { font-size: 0.72rem; color: var(--muted); margin-top: 0.45rem; word-break: break-word; }
+    .anom-list { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .anom-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      padding: 0.65rem 0.75rem;
+      background: rgba(235, 195, 71, 0.08);
+      border: 1px solid rgba(235, 195, 71, 0.35);
+      border-radius: 8px;
+      font-size: 0.82rem;
+    }
+    .anom-card .ic { font-size: 1.1rem; }
+    .empty-state {
+      padding: 1.25rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .insight-box {
+      padding: 1rem 1.1rem;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      color: #c5d0de;
+    }
+    .insight-box .badge {
       display: inline-block;
-      margin-right: 6px;
+      font-size: 0.65rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      margin-bottom: 0.5rem;
     }
-    .status-dot.off { background: #f07178; }
+    details.raw {
+      margin-top: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    details.raw summary {
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: var(--muted);
+      user-select: none;
+    }
+    details.raw pre {
+      margin: 0;
+      padding: 1rem;
+      background: #080b10;
+      font-size: 0.72rem;
+      overflow: auto;
+      max-height: 280px;
+      border-top: 1px solid var(--border);
+    }
+    .toast {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      opacity: 0;
+      transition: opacity 0.25s;
+      z-index: 100;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>aidbg live view</h1>
-      <div class="sub">Ingest + graph + heuristic incident ranker (MVP)</div>
-    </div>
-    <div class="controls">
-      <label><span class="status-dot" id="liveDot"></span><input type="checkbox" id="auto" checked /> Auto-refresh (3s)</label>
-      <button type="button" id="refreshBtn" style="padding:0.35rem 0.75rem;border-radius:6px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;">Refresh now</button>
-      <a href="/docs" target="_blank" rel="noopener">OpenAPI /docs</a>
-    </div>
-  </header>
-  <main>
-    <div id="errBox" class="err" style="display:none;"></div>
-    <div class="grid">
-      <div class="card">
-        <h2>OTLP ingest</h2>
-        <div class="metric" id="ingestSpans">—</div>
-        <small id="ingestMeta">spans received</small>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>aidbg</h1>
+        <p>Trace + K8s correlation dashboard. Heuristic ranker MVP.</p>
       </div>
-      <div class="card">
-        <h2>Incident confidence</h2>
-        <div class="metric" id="confidence">—</div>
-        <small>from <code>/incident/latest</code></small>
+      <div class="live-pill"><span class="dot" id="liveDot"></span><span id="liveText">Live</span></div>
+      <div>
+        <div class="nav-label">API</div>
+        <nav class="nav">
+          <a href="/docs" target="_blank" rel="noopener">OpenAPI docs</a>
+          <a href="/incident/latest" target="_blank" rel="noopener">GET /incident/latest</a>
+          <a href="/graph/snapshot" target="_blank" rel="noopener">GET /graph/snapshot</a>
+        </nav>
       </div>
-      <div class="card">
-        <h2>Services (window)</h2>
-        <div class="metric" id="svcCount">—</div>
-        <small id="svcWindow">—</small>
+      <div>
+        <div class="nav-label">Scenario (copy command)</div>
+        <div class="quick-actions">
+          <div class="qa-row">
+            <select id="scenarioPick" aria-label="Scenario">
+              <option value="deploy_latency">deploy_latency</option>
+              <option value="db_slowdown">db_slowdown</option>
+              <option value="traffic_spike_false_positive">traffic_spike_false_positive</option>
+              <option value="dependency_down">dependency_down</option>
+            </select>
+            <button type="button" id="copyCmd">Copy</button>
+          </div>
+          <p class="qa-hint">Run the copied command on the VM where kubectl and repo scripts exist. This UI does not execute kubectl for safety.</p>
+        </div>
       </div>
-    </div>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <div class="meta">
+          <strong>Operations view</strong> · <span id="lastRefresh">—</span>
+        </div>
+        <div class="controls">
+          <label><input type="checkbox" id="auto" checked /> Auto refresh 3s</label>
+          <button type="button" id="refreshBtn">Refresh now</button>
+        </div>
+      </div>
+      <div id="errBox"></div>
 
-    <div class="section-title">Top causes</div>
-    <div class="card" style="padding:0;overflow:hidden;">
-      <table>
-        <thead><tr><th>Type</th><th>Entity</th><th>Score</th><th>Evidence</th></tr></thead>
-        <tbody id="causesBody"><tr><td colspan="4" style="color:var(--muted);">Loading…</td></tr></tbody>
-      </table>
-    </div>
+      <div class="kpis">
+        <div class="kpi ok">
+          <h3>Spans ingested (OTLP)</h3>
+          <div class="val" id="ingestSpans">—</div>
+          <div class="sub" id="ingestMeta">—</div>
+        </div>
+        <div class="kpi warn">
+          <h3>Incident confidence</h3>
+          <div class="kpi-ring-wrap">
+            <div class="ring" id="confRing" style="--p: 0%;">
+              <div class="ring-inner" id="confRingLabel">—</div>
+            </div>
+            <div>
+              <div class="val" id="confidence">—</div>
+              <div class="sub">From latest incident payload</div>
+            </div>
+          </div>
+        </div>
+        <div class="kpi">
+          <h3>Active services</h3>
+          <div class="val" id="svcCount">—</div>
+          <div class="sub" id="svcWindow">—</div>
+        </div>
+      </div>
 
-    <div class="section-title">Anomalies</div>
-    <div class="card" style="padding:0;overflow:hidden;">
-      <table>
-        <thead><tr><th>Kind</th><th>Entity</th><th>Detail</th></tr></thead>
-        <tbody id="anomBody"><tr><td colspan="3" style="color:var(--muted);">Loading…</td></tr></tbody>
-      </table>
-    </div>
+      <div class="split">
+        <div class="section" style="margin-top:0;">
+          <div class="section-head">
+            <h2>Service graph</h2>
+            <span>From trace-derived edges · <span id="graphMeta">—</span></span>
+          </div>
+          <div class="panel">
+            <div id="graphNetwork"></div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:0;">
+          <div class="section-head">
+            <h2>Request volume by service</h2>
+            <span>Span count in window</span>
+          </div>
+          <div class="panel">
+            <div class="bars-wrap" id="barsWrap"></div>
+          </div>
+        </div>
+      </div>
 
-    <div class="section-title">Explain layer (summary)</div>
-    <div class="card">
-      <p id="explainSummary" style="margin:0;color:var(--muted);">Loading…</p>
-    </div>
+      <div class="section">
+        <div class="section-head">
+          <h2>Ranked hypotheses</h2>
+          <span>Top causes from heuristic ranker</span>
+        </div>
+        <div class="panel">
+          <div class="causes-grid" id="causesGrid"></div>
+        </div>
+      </div>
 
-    <div class="section-title">Raw incident JSON</div>
-    <pre id="rawIncident">{}</pre>
-  </main>
+      <div class="split">
+        <div class="section" style="margin-top:0;">
+          <div class="section-head">
+            <h2>Anomaly detector</h2>
+            <span>Baseline vs current windows</span>
+          </div>
+          <div class="panel">
+            <div class="anom-list" id="anomList"></div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:0;">
+          <div class="section-head">
+            <h2>Insights</h2>
+            <span>LLM + structured summary</span>
+          </div>
+          <div class="panel">
+            <div class="insight-box" id="insightBox"></div>
+          </div>
+        </div>
+      </div>
+
+      <details class="raw">
+        <summary>Raw incident JSON (for engineers)</summary>
+        <pre id="rawIncident">{}</pre>
+      </details>
+    </div>
+  </div>
+  <div class="toast" id="toast">Copied</div>
+
   <script>
     const $ = (id) => document.getElementById(id);
-    let timer = null;
+    let graphNetwork = null;
 
     function showErr(msg) {
       const box = $("errBox");
@@ -196,62 +511,199 @@
       box.textContent = msg;
     }
 
+    function toast(msg) {
+      const t = $("toast");
+      t.textContent = msg || "Copied";
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 1600);
+    }
+
     async function fetchJson(path) {
       const r = await fetch(path);
       if (!r.ok) throw new Error(path + " → " + r.status);
       return r.json();
     }
 
+    function causeClass(type) {
+      const t = (type || "").toLowerCase();
+      if (t.includes("dependency")) return "dep";
+      if (t.includes("deploy") || t.includes("recent_deploy")) return "deploy";
+      if (t.includes("unknown")) return "unknown";
+      return "";
+    }
+
+    function renderGraph(snapshot) {
+      const nodes = snapshot.nodes || [];
+      const edges = snapshot.edges || [];
+      if (typeof vis === "undefined") {
+        $("graphNetwork").innerHTML = "<div class='empty-state'>Graph library unavailable (check network). Use <a href='/graph/snapshot' style='color:var(--accent)'>/graph/snapshot</a>.</div>";
+        $("graphMeta").textContent = "—";
+        return;
+      }
+      if (!nodes.length) {
+        if (graphNetwork) {
+          graphNetwork.destroy();
+          graphNetwork = null;
+        }
+        $("graphNetwork").innerHTML = "<div class='empty-state'>No graph nodes yet — wait for OTLP traces.</div>";
+        $("graphMeta").textContent = (snapshot.window_s || "—") + "s window";
+        return;
+      }
+      const el = $("graphNetwork");
+      if (!graphNetwork) el.innerHTML = "";
+      const visNodes = nodes.map((n) => ({
+        id: n.id,
+        label: n.id,
+        title: "requests: " + (n.request_count || 0) + "\nerror rate: " + ((n.error_rate || 0) * 100).toFixed(1) + "%",
+        font: { color: "#e8edf4", size: 13 },
+        color: { background: "#1a2433", border: "#4da3ff", highlight: { background: "#243044", border: "#4da3ff" } },
+        margin: 10,
+      }));
+      const maxR = Math.max(1, ...edges.map((e) => e.request_count || 0));
+      const visEdges = edges.map((e) => ({
+        from: e.source,
+        to: e.target,
+        title: "p95 " + (e.p95_latency_ms != null ? e.p95_latency_ms.toFixed(1) : "—") + " ms · reqs " + (e.request_count || 0),
+        width: 1 + Math.round((4 * (e.request_count || 0)) / maxR),
+        color: { color: "#3d5a80", highlight: "#4da3ff" },
+        arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+      }));
+      const data = { nodes: visNodes, edges: visEdges };
+      const opts = {
+        physics: { enabled: true, stabilization: { iterations: 80 } },
+        layout: { improvedLayout: true },
+        interaction: { hover: true, tooltipDelay: 120 },
+      };
+      if (!graphNetwork) {
+        graphNetwork = new vis.Network(el, data, opts);
+      } else {
+        graphNetwork.setData(data);
+        graphNetwork.stabilize(50);
+      }
+      $("graphMeta").textContent = (snapshot.window_s || "—") + "s window · " + visNodes.length + " nodes · " + visEdges.length + " edges";
+    }
+
+    function renderBars(services) {
+      const wrap = $("barsWrap");
+      if (!services.length) {
+        wrap.innerHTML = "<div class='empty-state'>No service metrics in this window yet.</div>";
+        return;
+      }
+      const sorted = [...services].sort((a, b) => (b.request_count || 0) - (a.request_count || 0)).slice(0, 14);
+      const maxC = Math.max(1, ...sorted.map((s) => s.request_count || 0));
+      wrap.innerHTML = sorted.map((s) => {
+        const c = s.request_count || 0;
+        const pct = Math.round((100 * c) / maxC);
+        const lat = s.p95_latency_ms != null ? s.p95_latency_ms.toFixed(0) + " ms p95" : "";
+        return (
+          "<div class='bar-row' title='" + escapeAttr(lat) + "'>" +
+          "<span class='bar-name'>" + escapeHtml(s.service || "") + "</span>" +
+          "<div class='bar-track'><div class='bar-fill' style='width:" + pct + "%'></div></div>" +
+          "<span class='bar-n'>" + c + "</span></div>"
+        );
+      }).join("");
+    }
+
+    function renderCauses(causes) {
+      const g = $("causesGrid");
+      if (!causes.length) {
+        g.innerHTML = "<div class='empty-state' style='grid-column:1/-1'>No ranked causes. Ingest traces and K8s events, or run a scenario.</div>";
+        return;
+      }
+      g.innerHTML = causes.map((c) => {
+        const cls = causeClass(c.type);
+        const sc = c.score != null ? Number(c.score) : 0;
+        const pct = Math.min(100, Math.round((sc / 1.2) * 100));
+        const ev = c.evidence && typeof c.evidence === "object" ? JSON.stringify(c.evidence) : "—";
+        return (
+          "<div class='cause-card " + cls + "'>" +
+          "<div class='tag'>" + escapeHtml(c.type || "cause") + "</div>" +
+          "<div class='entity'>" + escapeHtml(c.entity || "—") + "</div>" +
+          "<div class='score-row'><span style='font-size:0.72rem;color:var(--muted)'>Score " + sc.toFixed(2) + "</span>" +
+          "<div class='score-bar'><div class='score-fill' style='width:" + pct + "%'></div></div></div>" +
+          "<div class='ev'>" + escapeHtml(ev.length > 180 ? ev.slice(0, 180) + "…" : ev) + "</div></div>"
+        );
+      }).join("");
+    }
+
+    function renderAnomalies(list) {
+      const el = $("anomList");
+      if (!list.length) {
+        el.innerHTML = "<div class='empty-state'>No anomalies in current vs baseline windows (thresholds not met). Ranked causes may still update from K8s or traffic signals.</div>";
+        return;
+      }
+      el.innerHTML = list.map((a) => {
+        const mag = a.magnitude != null ? " magnitude " + Number(a.magnitude).toFixed(2) : "";
+        return (
+          "<div class='anom-card'><span class='ic'>⚠</span><div><strong>" + escapeHtml(a.kind || "") + "</strong> · " +
+          escapeHtml(a.entity || "—") + "<br/><span style='color:var(--muted);font-size:0.78rem'>" + escapeHtml(mag) + "</span></div></div>"
+        );
+      }).join("");
+    }
+
+    function renderInsight(explain, incident) {
+      const box = $("insightBox");
+      const causes = (incident.top_causes || []).map((c) => c.type + (c.entity ? " (" + c.entity + ")" : "")).join(", ");
+      const anomN = (incident.anomalies || []).length;
+      let llm = "";
+      if (explain.provider === "disabled" || explain.reason === "missing_azure_openai_env") {
+        llm = "<p><span class='badge'>LLM off</span> Configure <code>AZURE_OPENAI_*</code> on the backend for narrative insights. Until then, use <strong>ranked hypotheses</strong> and the <strong>service graph</strong> above.</p>";
+      } else if (explain.summary) {
+        llm = "<p><span class='badge'>LLM</span> " + escapeHtml(String(explain.summary)) + "</p>";
+      } else {
+        llm = "<p><span class='badge'>LLM</span> " + escapeHtml(JSON.stringify(explain).slice(0, 400)) + "</p>";
+      }
+      const structured =
+        "<p><strong>Structured readout</strong></p><ul style='margin:0.35rem 0 0 1rem;padding:0;color:var(--muted);font-size:0.82rem'>" +
+        "<li>" + anomN + " anomaly row(s) in API response</li>" +
+        "<li>Top cause types: " + escapeHtml(causes || "—") + "</li>" +
+        "<li>Confidence: " + (incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—") + "</li></ul>";
+      box.innerHTML = llm + structured;
+    }
+
     async function load() {
       $("liveDot").classList.remove("off");
+      $("liveText").textContent = "Live";
       showErr("");
       try {
-        const [ingest, incident, anom, explain, svc] = await Promise.all([
+        const [ingest, incident, anom, explain, svc, graph] = await Promise.all([
           fetchJson("/stats/ingest"),
           fetchJson("/incident/latest"),
           fetchJson("/anomalies/latest"),
           fetchJson("/explain/latest"),
           fetchJson("/stats/services"),
+          fetchJson("/graph/snapshot"),
         ]);
+
+        $("lastRefresh").textContent = "Updated " + new Date().toLocaleTimeString();
 
         $("ingestSpans").textContent = ingest.spans_received != null ? ingest.spans_received : "—";
         $("ingestMeta").textContent =
-          "batches: " + (ingest.requests_received ?? "—") +
+          "Export batches: " + (ingest.requests_received ?? "—") +
           (ingest.last_ingest_unix_s != null
-            ? " · last " + new Date(ingest.last_ingest_unix_s * 1000).toLocaleTimeString()
+            ? " · last ingest " + new Date(ingest.last_ingest_unix_s * 1000).toLocaleTimeString()
             : "");
 
-        $("confidence").textContent =
-          incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—";
+        const conf = incident.confidence != null ? incident.confidence : 0;
+        const confPct = Math.round(conf * 100);
+        $("confidence").textContent = confPct + "%";
+        $("confRing").style.setProperty("--p", confPct + "%");
+        $("confRingLabel").textContent = confPct + "%";
 
         const services = svc.services || [];
         $("svcCount").textContent = services.length;
-        $("svcWindow").textContent = "window " + (svc.window_s ?? "—") + "s · top by volume in table below";
+        $("svcWindow").textContent = "Rolling " + (svc.window_s ?? "—") + "s window · sorted by volume";
 
-        const causes = incident.top_causes || [];
-        $("causesBody").innerHTML = causes.length
-          ? causes.map((c) => {
-              const ev = c.evidence && typeof c.evidence === "object"
-                ? JSON.stringify(c.evidence).slice(0, 120) + (JSON.stringify(c.evidence).length > 120 ? "…" : "")
-                : "—";
-              return "<tr><td><span class=\"pill\">" + escapeHtml(c.type || "") + "</span></td><td>" + escapeHtml(c.entity || "—") + "</td><td>" + (c.score != null ? Number(c.score).toFixed(2) : "—") + "</td><td style=\"color:var(--muted);font-size:0.8rem;\">" + escapeHtml(ev) + "</td></tr>";
-            }).join("")
-          : "<tr><td colspan=\"4\" style=\"color:var(--muted);\">No ranked causes yet</td></tr>";
-
-        const alist = anom.anomalies || [];
-        $("anomBody").innerHTML = alist.length
-          ? alist.map((a) => {
-              const d = a.magnitude != null ? "mag " + Number(a.magnitude).toFixed(2) : "";
-              return "<tr><td>" + escapeHtml(a.kind || "") + "</td><td>" + escapeHtml(a.entity || "—") + "</td><td style=\"color:var(--muted);font-size:0.8rem;\">" + escapeHtml(d) + "</td></tr>";
-            }).join("")
-          : "<tr><td colspan=\"3\" style=\"color:var(--muted);\">None in current/baseline windows</td></tr>";
-
-        const summ = explain.summary || explain.reason || JSON.stringify(explain).slice(0, 200);
-        $("explainSummary").textContent = typeof summ === "string" ? summ : JSON.stringify(summ);
+        renderBars(services);
+        renderGraph(graph);
+        renderCauses(incident.top_causes || []);
+        renderAnomalies(anom.anomalies || []);
+        renderInsight(explain, incident);
 
         $("rawIncident").textContent = JSON.stringify(incident, null, 2);
       } catch (e) {
         $("liveDot").classList.add("off");
+        $("liveText").textContent = "Error";
         showErr("Failed to load API: " + e.message);
       }
     }
@@ -263,18 +715,30 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
     }
-
-    function tick() {
-      if ($("auto").checked) load();
+    function escapeAttr(s) {
+      return escapeHtml(s).replace(/'/g, "&#39;");
     }
 
-    $("refreshBtn").addEventListener("click", load);
-    $("auto").addEventListener("change", () => {
-      if ($("auto").checked) load();
+    function scenarioCommand(name) {
+      return "scripts/run_scenario.sh " + name;
+    }
+
+    $("copyCmd").addEventListener("click", async () => {
+      const name = $("scenarioPick").value;
+      const cmd = scenarioCommand(name);
+      try {
+        await navigator.clipboard.writeText(cmd);
+        toast("Copied: " + cmd);
+      } catch {
+        toast("Copy failed — select and copy manually");
+      }
     });
 
+    $("refreshBtn").addEventListener("click", load);
+    $("auto").addEventListener("change", () => { if ($("auto").checked) load(); });
+
     load();
-    timer = setInterval(tick, 3000);
+    setInterval(() => { if ($("auto").checked) load(); }, 3000);
   </script>
 </body>
 </html>

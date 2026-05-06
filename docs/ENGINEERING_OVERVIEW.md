@@ -177,7 +177,7 @@ All candidates are **heuristic** and carry a numeric **`score`**. They are conca
 
 1. `scripts/bootstrap_local.sh`  
 2. `BACKEND_MODE=docker scripts/backend_up.sh` (separate terminal)  
-3. **GUI:** open **http://localhost:8088/ui/** — auto-refreshes ingest stats, **top causes**, **anomalies**, explain summary, and raw incident JSON (good for screen-share while you inject faults).  
+3. **GUI:** open **http://localhost:8088/ui/** — dashboard with KPI strip, **interactive service graph** (vis-network from `/graph/snapshot`), **request volume bars**, ranked hypothesis cards, anomaly alerts, insights panel (LLM when configured), scenario **copy-to-clipboard** helpers, and collapsible raw JSON.  
 4. Port-forward demo shop if using `run_load.sh`: `kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080`  
 5. Optional **trace UI:** enable Jaeger (or Grafana) in a heavier Helm values overlay and use the demo’s `frontend-proxy` paths (`/jaeger/ui/`, `/grafana/`) — the default `values-light` keeps those off to save RAM on small Kind clusters.  
 6. Run `scripts/run_scenario.sh dependency_down` and watch the dashboard update; artifacts still land under `artifacts/<scenario>/`.  
