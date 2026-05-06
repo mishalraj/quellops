@@ -22,3 +22,19 @@ components:
   accounting:
     enabled: false
 
+# Demo workloads send OTLP to the in-namespace `otel-collector` service. Without an
+# extra exporter, nothing reaches `aidbg-otel-collector` or the local backend, so
+# `/stats/ingest` stays at zero. Forward traces into the aidbg pipeline (which then
+# exports to the host backend — see `deploy/otel-collector/collector.yaml`).
+opentelemetry-collector:
+  config:
+    exporters:
+      otlp/aidbg:
+        endpoint: aidbg-otel-collector.aidbg-otel.svc.cluster.local:4317
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          exporters: [otlp/aidbg, debug, spanmetrics]
+
