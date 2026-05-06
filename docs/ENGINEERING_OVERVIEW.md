@@ -137,12 +137,13 @@ Each scenario defines:
 All candidates are **heuristic** and carry a numeric **`score`**. They are concatenated and **sorted by `score` descending**. Then `_pick_top_causes()` fills **up to 3** slots with a **diversity rule**: at most **two** `traffic_spike` rows, then backfill from the remaining list by score so other cause types are not crowded out.
 
 1. **`recent_deploy`**  
-   - Scans recent K8s events whose `type` contains `"deployment"`.  
+   - Scans recent K8s events whose `type` suggests a rollout (`deploy.*`, `k8s.deployment.*`, etc.).  
    - Time-decayed score (newer → higher).  
-   - **Bonus** if deployment name matches an anomaly entity.
+   - **Bonus** if deployment name matches an anomaly entity.  
+   - **Excluded** when `fields.desired_replicas == "0"` (intentional scale-down is ranked as `dependency_unavailable`, not as a deploy hypothesis).
 
 2. **`dependency_unavailable`**  
-   - **Scale-to-zero style:** `desired_replicas == "0"` in event fields → stronger score band.  
+   - **Scale-to-zero style:** `desired_replicas == "0"` in event fields → high score band (beats normal `recent_deploy`).  
    - **Pod trouble:** message/reason hints (e.g. back-off, crashloop, unhealthy) → another score band.
 
 3. **`traffic_spike`**  

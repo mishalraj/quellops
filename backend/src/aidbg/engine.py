@@ -349,6 +349,10 @@ class SignalStore:
             t = ev.get("type", "")
             if not _event_suggests_recent_deploy(str(t)):
                 continue
+            fields = ev.get("fields") or {}
+            if isinstance(fields, dict) and str(fields.get("desired_replicas", "")) == "0":
+                # Scale-to-zero / dependency outage — not a rollout hypothesis; avoid beating dependency_unavailable.
+                continue
             age_s = (now_ms - int(ev.get("at_unix_ms", now_ms))) / 1000.0
             if age_s > 1800:
                 continue
@@ -357,7 +361,6 @@ class SignalStore:
                 "event_type": ev.get("type"),
                 "age_s": round(age_s, 1),
             }
-            fields = ev.get("fields") or {}
             if isinstance(fields, dict):
                 if fields.get("rollout_status"):
                     evidence["rollout_status"] = fields["rollout_status"]
@@ -365,6 +368,8 @@ class SignalStore:
                     evidence["updated_replicas"] = fields.get("updated_replicas")
                 if fields.get("ready_replicas") is not None:
                     evidence["ready_replicas"] = fields.get("ready_replicas")
+                if fields.get("desired_replicas") is not None:
+                    evidence["desired_replicas"] = fields.get("desired_replicas")
             if ev.get("reason"):
                 evidence["k8s_reason"] = ev.get("reason")
             if ev.get("message"):
@@ -411,7 +416,8 @@ class SignalStore:
                             "type": "dependency_unavailable",
                             "entity": ev.get("name"),
                             "namespace": ev.get("namespace"),
-                            "score": max(0.4, 1.1 - (age_s / 2400.0)),
+                            # Above recent_deploy cap (1.2) when fresh so scale-to-zero wins top-1.
+                            "score": max(0.5, 1.32 - (age_s / 2400.0)),
                             "evidence": {
                                 "event_type": t,
                                 "desired_replicas": desired_replicas,
@@ -443,18 +449,23 @@ class SignalStore:
             )
             if len(dependency_down_candidates) >= 5:
                 break
+        _dedup_dep: dict[tuple[str, str], dict[str, Any]] = {}
+        for c in dependency_down_candidates:
+            dk = (str(c.get("entity") or ""), str(c.get("namespace") or ""))
+            if dk not in _dedup_dep or float(c["score"]) > float(_dedup_dep[dk]["score"]):
+                _dedup_dep[dk] = c
+        dependency_down_candidates = list(_dedup_dep.values())
         traffic_candidates: list[dict[str, Any]] = []
         metrics = self.service_metrics(current_window_s)
-        # OTel demo often stays under 1500 spans/service per 300s; use a lower bar.
-        # Score scales with volume so sustained load can rank above rollout noise
-        # (dependency_unavailable heuristics often sit ~0.85–0.9 when fresh).
-        min_requests = 600
+        # OTel demo light: per-service span counts stay moderate; keep threshold reachable.
+        # Ceiling must exceed typical fresh recent_deploy (~1.0–1.1) so load-spike scenarios rank correctly.
+        min_requests = 380
         for m in metrics:
             if m["request_count"] < min_requests or m["error_rate"] >= 0.01:
                 continue
             rc = float(m["request_count"])
             excess = max(0.0, rc - min_requests)
-            score = min(0.97, 0.40 + min(1.0, excess / 2500.0) * 0.57)
+            score = min(1.26, 0.46 + min(1.0, excess / 1900.0) * 0.80)
             traffic_candidates.append(
                 {
                     "type": "traffic_spike",
