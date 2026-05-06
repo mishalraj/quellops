@@ -8,4 +8,5 @@ inject:
 assert:
   expect_top_types:
     - recent_deploy
+    - traffic_spike
   allow_top_k: 3
