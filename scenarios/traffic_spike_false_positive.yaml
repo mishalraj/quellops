@@ -1,5 +1,6 @@
 name: traffic_spike_false_positive
 description: Increase load without deployment; deploy should not be top-1.
+wait_seconds: 45
 target:
   namespace: otel-demo
   deployment: frontend

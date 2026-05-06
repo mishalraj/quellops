@@ -274,16 +274,24 @@ class SignalStore:
                 break
         traffic_candidates: list[dict[str, Any]] = []
         metrics = self.service_metrics(current_window_s)
+        # OTel demo often stays under 1500 spans/service per 300s; use a lower bar.
+        # Score scales with volume so sustained load can rank above rollout noise
+        # (dependency_unavailable heuristics often sit ~0.85–0.9 when fresh).
+        min_requests = 600
         for m in metrics:
-            if m["request_count"] > 1500 and m["error_rate"] < 0.01:
-                traffic_candidates.append(
-                    {
-                        "type": "traffic_spike",
-                        "entity": m["service"],
-                        "score": 0.25,
-                        "evidence": {"request_count": m["request_count"]},
-                    }
-                )
+            if m["request_count"] < min_requests or m["error_rate"] >= 0.01:
+                continue
+            rc = float(m["request_count"])
+            excess = max(0.0, rc - min_requests)
+            score = min(0.97, 0.40 + min(1.0, excess / 2500.0) * 0.57)
+            traffic_candidates.append(
+                {
+                    "type": "traffic_spike",
+                    "entity": m["service"],
+                    "score": score,
+                    "evidence": {"request_count": int(rc)},
+                }
+            )
         candidates = deploy_candidates + dependency_down_candidates + traffic_candidates
         candidates.sort(key=lambda x: x["score"], reverse=True)
         if anomalies and not candidates:

@@ -140,6 +140,11 @@ PY
 }
 
 inject
+if [[ "$(yaml_eval 'inject.type')" == "load_spike_only" ]]; then
+  # Extra HTTP load so trace volume crosses traffic_spike thresholds after prior scenarios.
+  DURATION_SECONDS="${LOAD_SPIKE_DURATION_SECONDS:-120}" RPS="${LOAD_SPIKE_RPS:-12}" \
+    scripts/run_load.sh || true
+fi
 sleep "$WAIT_SECONDS"
 
 curl -fsS "$BACKEND_URL/incident/latest" > "$ARTIFACT_DIR/$SCENARIO/incident.json"
