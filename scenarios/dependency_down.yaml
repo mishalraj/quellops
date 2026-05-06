@@ -2,7 +2,7 @@ name: dependency_down
 description: Scale dependency down to emulate outage.
 target:
   namespace: otel-demo
-  deployment: cartservice
+  deployment: cart
 inject:
   type: scale_to_zero
 assert:

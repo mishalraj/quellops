@@ -2,7 +2,7 @@ name: db_slowdown
 description: Placeholder scenario for DB latency regression.
 target:
   namespace: otel-demo
-  deployment: productcatalogservice
+  deployment: product-catalog
 inject:
   type: annotate_placeholder
 assert:
