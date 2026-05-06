@@ -46,6 +46,8 @@ Schema references for deterministic artifacts are in `backend/schemas/`.
 
 ## Azure OpenAI explanation layer
 
+Step-by-step: [docs/LLM_SETUP.md](docs/LLM_SETUP.md).
+
 Set these env vars before launching backend:
 
 - `AZURE_OPENAI_ENDPOINT`

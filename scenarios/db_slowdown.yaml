@@ -1,5 +1,8 @@
 name: db_slowdown
-description: Placeholder scenario for DB latency regression.
+description: >
+  Synthetic "change" scenario: annotate + rollout restart of product-catalog.
+  Does not inject real DB latency; UI may show recent_deploy and/or traffic_spike,
+  not a DB-specific root cause until the ranker models data stores.
 target:
   namespace: otel-demo
   deployment: product-catalog

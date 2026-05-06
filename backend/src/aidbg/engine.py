@@ -17,6 +17,33 @@ def _pct(values: list[float], percentile: float) -> float:
     return values[idx]
 
 
+def _pick_top_causes(candidates: list[dict[str, Any]], k: int = 3) -> list[dict[str, Any]]:
+    """Prefer a mix of cause types: at most two traffic_spike rows, then backfill by score."""
+    if not candidates:
+        return []
+    sorted_c = sorted(candidates, key=lambda x: x["score"], reverse=True)
+    chosen: list[dict[str, Any]] = []
+    chosen_idx: set[int] = set()
+    traffic_rows = 0
+    for idx, c in enumerate(sorted_c):
+        if len(chosen) >= k:
+            break
+        if c.get("type") == "traffic_spike" and traffic_rows >= 2:
+            continue
+        chosen.append(c)
+        chosen_idx.add(idx)
+        if c.get("type") == "traffic_spike":
+            traffic_rows += 1
+    for idx, c in enumerate(sorted_c):
+        if len(chosen) >= k:
+            break
+        if idx in chosen_idx:
+            continue
+        chosen.append(c)
+        chosen_idx.add(idx)
+    return chosen[:k]
+
+
 @dataclass
 class SpanPoint:
     at_unix_s: float
@@ -196,26 +223,36 @@ class SignalStore:
     def build_incident(self, current_window_s: int, baseline_window_s: int) -> dict[str, Any]:
         anomalies = self.detect_anomalies(current_window_s, baseline_window_s)
         graph = self.graph_snapshot(current_window_s)
+        node_requests = {n["id"]: int(n.get("request_count", 0)) for n in graph.get("nodes", [])}
         now_ms = int(time.time() * 1000)
         recent_events = self.recent_k8s_events(limit=200)
         affected_entities = {a.get("entity", "") for a in anomalies if a.get("entity")}
         deploy_candidates: list[dict[str, Any]] = []
         for ev in reversed(recent_events):
             t = ev.get("type", "")
-            if "deployment" not in t:
+            if "deployment" not in str(t).lower():
                 continue
             age_s = (now_ms - int(ev.get("at_unix_ms", now_ms))) / 1000.0
             if age_s > 1800:
                 continue
             name = str(ev.get("name") or "")
-            evidence = {
+            evidence: dict[str, Any] = {
                 "event_type": ev.get("type"),
-                "age_s": age_s,
+                "age_s": round(age_s, 1),
             }
+            if ev.get("reason"):
+                evidence["k8s_reason"] = ev.get("reason")
+            if ev.get("message"):
+                msg = str(ev.get("message"))
+                evidence["k8s_message"] = msg if len(msg) <= 240 else msg[:237] + "..."
             score = max(0.1, 1.0 - (age_s / 1800.0))
             if name in affected_entities:
                 score += 0.25
                 evidence["service_match"] = True
+            gr = node_requests.get(name, 0)
+            if gr >= 80:
+                score += 0.12
+                evidence["trace_requests_in_window"] = gr
             deploy_candidates.append(
                 {
                     "type": "recent_deploy",
@@ -289,7 +326,11 @@ class SignalStore:
                     "type": "traffic_spike",
                     "entity": m["service"],
                     "score": score,
-                    "evidence": {"request_count": int(rc)},
+                    "evidence": {
+                        "request_count": int(rc),
+                        "p95_latency_ms": round(m["p95_latency_ms"], 2),
+                        "error_rate": round(m["error_rate"], 4),
+                    },
                 }
             )
         candidates = deploy_candidates + dependency_down_candidates + traffic_candidates
@@ -304,11 +345,12 @@ class SignalStore:
                     "evidence": {"reason": "anomaly_detected_without_matching_k8s_signal"},
                 }
             )
+        top_causes = _pick_top_causes(candidates, 3)
         return {
             "generated_at_unix_ms": now_ms,
             "anomalies": anomalies,
-            "top_causes": candidates[:3],
-            "confidence": min(0.95, 0.3 + 0.2 * len(anomalies) + 0.2 * len(candidates[:1])),
+            "top_causes": top_causes,
+            "confidence": min(0.95, 0.3 + 0.2 * len(anomalies) + 0.2 * len(top_causes[:1])),
             "graph_snapshot": graph,
         }
 

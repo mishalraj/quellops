@@ -12,3 +12,8 @@ services:
       AIDBG_HTTP_BIND: "0.0.0.0:8088"
       AIDBG_CURRENT_WINDOW_S: "300"
       AIDBG_BASELINE_WINDOW_S: "900"
+      # Optional: enable /explain/latest + UI insights (see docs/LLM_SETUP.md)
+      # AZURE_OPENAI_ENDPOINT: "https://YOUR_RESOURCE.openai.azure.com/"
+      # AZURE_OPENAI_API_KEY: "YOUR_KEY"
+      # AZURE_OPENAI_DEPLOYMENT: "YOUR_DEPLOYMENT"
+      # AZURE_OPENAI_API_VERSION: "2024-12-01-preview"
