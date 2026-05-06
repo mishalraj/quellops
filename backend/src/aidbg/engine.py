@@ -59,9 +59,11 @@ def _pick_top_causes(candidates: list[dict[str, Any]], k: int = 3) -> list[dict[
 @dataclass
 class SpanPoint:
     at_unix_s: float
+    start_unix_s: float
     trace_id: str
     span_id: str
     parent_span_id: str
+    name: str
     service: str
     latency_ms: float
     is_error: bool
@@ -182,6 +184,109 @@ class SignalStore:
                 }
             )
         return {"window_s": window_s, "nodes": nodes, "edges": edges}
+
+    def trace_focus_snapshot(self, impacted_service: str, window_s: int, max_spans: int = 96) -> dict[str, Any] | None:
+        """Pick one recent trace touching `impacted_service`, return span rows for a Jaeger-style Gantt (subtree)."""
+        target = (impacted_service or "").strip()
+        if not target:
+            return None
+        now_s = time.time()
+        cutoff = now_s - window_s
+        with self._lock:
+            by_trace: dict[str, list[SpanPoint]] = defaultdict(list)
+            for p in self._spans:
+                if p.at_unix_s >= cutoff:
+                    by_trace[p.trace_id].append(p)
+        candidates: list[tuple[bool, float, float, str, list[SpanPoint]]] = []
+        for tid, pts in by_trace.items():
+            if not any(p.service == target for p in pts):
+                continue
+            err_hit = any(p.service == target and p.is_error for p in pts)
+            lat_hit = max((p.latency_ms for p in pts if p.service == target), default=0.0)
+            last_end = max(p.at_unix_s for p in pts)
+            candidates.append((err_hit, lat_hit, last_end, tid, pts))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda x: (-int(x[0]), -x[1], -x[2]))
+        _, _, _, trace_id, pts = candidates[0]
+        by_id = {p.span_id: p for p in pts}
+
+        def subtree_span_ids() -> set[str]:
+            hot = {p.span_id for p in pts if p.service == target}
+            if not hot:
+                return {p.span_id for p in pts}
+            keep: set[str] = set(hot)
+            for sid in list(hot):
+                cur = sid
+                for _ in range(128):
+                    p = by_id.get(cur)
+                    if not p or not p.parent_span_id:
+                        break
+                    pid = p.parent_span_id
+                    if pid in by_id:
+                        keep.add(pid)
+                    cur = pid
+            stack = list(hot)
+            while stack:
+                sid = stack.pop()
+                for p in pts:
+                    if p.parent_span_id == sid and p.span_id not in keep:
+                        keep.add(p.span_id)
+                        stack.append(p.span_id)
+            return keep
+
+        keep_ids = subtree_span_ids()
+        filtered = [p for p in pts if p.span_id in keep_ids]
+        trace_start = min(p.start_unix_s for p in filtered)
+        trace_end = max(p.at_unix_s for p in filtered)
+        duration_ms = max((trace_end - trace_start) * 1000.0, 0.001)
+
+        def depth_of(sid: str) -> int:
+            d = 0
+            cur = sid
+            seen: set[str] = set()
+            for _ in range(128):
+                p = by_id.get(cur)
+                if not p or not p.parent_span_id:
+                    break
+                pid = p.parent_span_id
+                if pid not in by_id or pid in seen:
+                    break
+                seen.add(cur)
+                d += 1
+                cur = pid
+            return d
+
+        rows: list[dict[str, Any]] = []
+        for p in sorted(filtered, key=lambda x: (x.start_unix_s, x.span_id)):
+            start_ms = max(0.0, (p.start_unix_s - trace_start) * 1000.0)
+            rows.append(
+                {
+                    "span_id": p.span_id,
+                    "parent_span_id": p.parent_span_id,
+                    "name": p.name or p.service or "span",
+                    "service": p.service,
+                    "start_ms": round(start_ms, 3),
+                    "duration_ms": round(p.latency_ms, 3),
+                    "is_error": p.is_error,
+                    "impacted": p.service == target,
+                    "depth": depth_of(p.span_id),
+                }
+            )
+        truncated = False
+        if len(rows) > max_spans:
+            rows = rows[:max_spans]
+            truncated = True
+        return {
+            "trace_id": trace_id,
+            "duration_ms": round(duration_ms, 3),
+            "impacted_service": target,
+            "trace_start_unix_s": trace_start,
+            "subtree_only": True,
+            "span_count_total": len(filtered),
+            "truncated": truncated,
+            "spans": rows,
+        }
 
     def detect_anomalies(self, current_window_s: int, baseline_window_s: int) -> list[dict[str, Any]]:
         now_s = time.time()

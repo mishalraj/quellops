@@ -82,6 +82,12 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     def graph_snapshot(window_s: int = 300) -> dict:
         return stats.signals.graph_snapshot(window_s)
 
+    @app.get("/trace/focus")
+    def trace_focus(service: str, window_s: int = 300) -> dict:
+        """One representative trace touching `service` (ancestors + subtree), for Gantt UI."""
+        snap = stats.signals.trace_focus_snapshot(service, window_s)
+        return {"window_s": window_s, "service": service, "trace": snap}
+
     @app.get("/anomalies/latest")
     def anomalies_latest(
         current_window_s: int | None = None,

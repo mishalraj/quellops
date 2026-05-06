@@ -482,6 +482,100 @@
     }
     details.topology-panel summary:hover { color: var(--accent); }
     #graphNetwork { min-height: 300px; background: #0c1018; border-radius: 8px; border: 1px solid var(--border); }
+
+    .tg-wrap { font-size: 0.8rem; }
+    .tg-head-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1.2fr) minmax(90px, 0.9fr) minmax(180px, 2.5fr);
+      gap: 0.5rem;
+      padding: 0.45rem 0.55rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.62rem;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    .tg-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1.2fr) minmax(90px, 0.9fr) minmax(180px, 2.5fr);
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.2rem 0.55rem;
+      border-bottom: 1px solid rgba(42, 53, 72, 0.45);
+      min-height: 26px;
+    }
+    .tg-row:hover { background: rgba(77, 163, 255, 0.04); }
+    .tg-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.8rem;
+    }
+    .tg-svc {
+      color: var(--muted);
+      font-size: 0.74rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tg-track {
+      position: relative;
+      height: 22px;
+      background: rgba(12, 16, 24, 0.9);
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .tg-grid-lines {
+      position: absolute;
+      inset: 0;
+      border-radius: 3px;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent 0,
+        transparent calc(10% - 1px),
+        rgba(42, 53, 72, 0.5) 10%
+      );
+      pointer-events: none;
+    }
+    .tg-bar {
+      position: absolute;
+      top: 2px;
+      height: 16px;
+      border-radius: 3px;
+      background: linear-gradient(180deg, #5f7ab8, #3d5a80);
+      border: 1px solid var(--accent-dim);
+      min-width: 3px;
+      box-sizing: border-box;
+    }
+    .tg-bar.err {
+      background: linear-gradient(180deg, #f28b91, #a84850);
+      border-color: #f07178;
+    }
+    .tg-bar.impacted {
+      box-shadow: 0 0 0 2px rgba(235, 195, 71, 0.4);
+      border-color: var(--warn);
+    }
+    .tg-dur {
+      position: absolute;
+      top: 0;
+      left: 6px;
+      font-size: 0.62rem;
+      line-height: 18px;
+      color: var(--text);
+      text-shadow: 0 0 4px #000;
+      pointer-events: none;
+      max-width: 90%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tg-meta {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 0.55rem;
+      line-height: 1.45;
+    }
   </style>
 </head>
 <body>
@@ -498,6 +592,7 @@
           <a href="/docs" target="_blank" rel="noopener">OpenAPI docs</a>
           <a href="/incident/latest" target="_blank" rel="noopener">GET /incident/latest</a>
           <a href="/graph/snapshot" target="_blank" rel="noopener">GET /graph/snapshot</a>
+          <a href="/trace/focus?service=frontend" target="_blank" rel="noopener">GET /trace/focus</a>
         </nav>
       </div>
       <div>
@@ -563,6 +658,16 @@
           <div class="panel">
             <div class="bars-wrap" id="barsWrap"></div>
           </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <h2>Impacted service trace</h2>
+          <span>Jaeger-style timeline · ancestors + downstream spans for the hot service only</span>
+        </div>
+        <div class="panel">
+          <div class="tg-wrap" id="traceGanttWrap"></div>
         </div>
       </div>
 
@@ -1126,6 +1231,108 @@
       box.innerHTML = parts.join("");
     }
 
+    function formatDurationMs(ms) {
+      const x = Number(ms);
+      if (!Number.isFinite(x) || x < 0) return "—";
+      if (x >= 1000) return (x / 1000).toFixed(3) + "s";
+      if (x >= 1) return x.toFixed(1) + " ms";
+      return (x * 1000).toFixed(0) + " µs";
+    }
+
+    function pickImpactedService(incident, anomalies) {
+      const anoms = anomalies || [];
+      for (let i = 0; i < anoms.length; i++) {
+        if (anoms[i].entity) return String(anoms[i].entity);
+      }
+      const causes = (incident && incident.top_causes) || [];
+      for (let j = 0; j < causes.length; j++) {
+        if (causes[j].entity) return String(causes[j].entity);
+      }
+      const nodes = (incident && incident.graph_snapshot && incident.graph_snapshot.nodes) || [];
+      let best = null;
+      let bestEr = -1;
+      for (let k = 0; k < nodes.length; k++) {
+        const er = nodes[k].error_rate != null ? Number(nodes[k].error_rate) : 0;
+        if (er > bestEr) {
+          bestEr = er;
+          best = nodes[k].id;
+        }
+      }
+      if (best != null && bestEr >= 0.02) return best;
+      return null;
+    }
+
+    function renderTraceGantt(apiResponse, impactedHint) {
+      const el = $("traceGanttWrap");
+      const tr = apiResponse && apiResponse.trace;
+      if (!impactedHint) {
+        el.innerHTML =
+          "<div class='empty-state'>No impacted service yet (needs an anomaly, ranked cause, or &gt;2% error node). Ingest traces and refresh.</div>";
+        return;
+      }
+      if (!tr || !tr.spans || !tr.spans.length) {
+        el.innerHTML =
+          "<div class='empty-state'>No trace in the current window for <strong>" +
+          escapeHtml(impactedHint) +
+          "</strong>. Wait for a request that hits that service, or check <a href='/trace/focus?service=" +
+          encodeURIComponent(impactedHint) +
+          "' style='color:var(--accent)'>/trace/focus</a>.</div>";
+        return;
+      }
+      const D = Math.max(Number(tr.duration_ms) || 1, 0.001);
+      let html = "";
+      html +=
+        "<div class='tg-head-row'><div>Operation</div><div>Service</div><div>Timeline · " +
+        formatDurationMs(D) +
+        " total</div></div>";
+      const spans = tr.spans;
+      for (let i = 0; i < spans.length; i++) {
+        const s = spans[i];
+        const depth = s.depth != null ? Number(s.depth) : 0;
+        const pad = Math.min(depth * 14, 120);
+        const left = (Number(s.start_ms) / D) * 100;
+        const w = (Number(s.duration_ms) / D) * 100;
+        const barCls = "tg-bar" + (s.is_error ? " err" : "") + (s.impacted ? " impacted" : "");
+        const title = escapeAttr(
+          (s.name || "") + " · " + (s.service || "") + " · " + formatDurationMs(s.duration_ms)
+        );
+        html +=
+          "<div class='tg-row' title='" +
+          title +
+          "'>" +
+          "<div class='tg-name' style='padding-left:" +
+          pad +
+          "px'>" +
+          escapeHtml(s.name || "—") +
+          "</div>" +
+          "<div class='tg-svc'>" +
+          escapeHtml(s.service || "—") +
+          "</div>" +
+          "<div class='tg-track'><div class='tg-grid-lines'></div>" +
+          "<div class='" +
+          barCls +
+          "' style='left:" +
+          left.toFixed(3) +
+          "%;width:" +
+          Math.max(w, 0.12).toFixed(3) +
+          "%'></div>" +
+          "<span class='tg-dur'>" +
+          escapeHtml(formatDurationMs(s.duration_ms)) +
+          "</span></div></div>";
+      }
+      let meta =
+        "Trace <code style='font-size:0.7rem;color:var(--accent)'>" +
+        escapeHtml((tr.trace_id || "").slice(0, 16)) +
+        "…</code> · " +
+        (tr.span_count_total != null ? tr.span_count_total : spans.length) +
+        " spans in subtree";
+      if (tr.truncated) meta += " (list truncated)";
+      meta +=
+        " · impacted: <strong>" + escapeHtml(tr.impacted_service || impactedHint) + "</strong>";
+      html += "<div class='tg-meta'>" + meta + "</div>";
+      el.innerHTML = html;
+    }
+
     async function load() {
       $("liveDot").classList.remove("off");
       $("liveText").textContent = "Live";
@@ -1159,6 +1366,20 @@
         renderCauses(incident.top_causes || []);
         renderAnomalies(anom.anomalies || []);
         renderInsight(explain, incident);
+
+        const impact = pickImpactedService(incident, anom.anomalies || []);
+        let traceSnap = null;
+        if (impact) {
+          try {
+            const w = graph.window_s ?? 300;
+            traceSnap = await fetchJson(
+              "/trace/focus?service=" + encodeURIComponent(impact) + "&window_s=" + w
+            );
+          } catch (_) {
+            traceSnap = { trace: null, service: impact };
+          }
+        }
+        renderTraceGantt(traceSnap, impact);
       } catch (e) {
         $("liveDot").classList.add("off");
         $("liveText").textContent = "Error";

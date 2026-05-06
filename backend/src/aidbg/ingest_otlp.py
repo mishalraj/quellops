@@ -79,12 +79,20 @@ class TraceIngestServicer(TraceServiceServicer):
                     trace_id = sp.trace_id.hex()
                     span_id = sp.span_id.hex()
                     parent_span_id = sp.parent_span_id.hex()
-                    at_s = sp.end_time_unix_nano / 1_000_000_000.0 if sp.end_time_unix_nano else time.time()
+                    if parent_span_id == "0" * len(parent_span_id) and len(parent_span_id) > 0:
+                        parent_span_id = ""
+                    start_ns = int(sp.start_time_unix_nano or 0)
+                    end_ns = int(sp.end_time_unix_nano or 0)
+                    start_unix_s = start_ns / 1_000_000_000.0 if start_ns else time.time() - latency_ms / 1000.0
+                    at_s = end_ns / 1_000_000_000.0 if end_ns else start_unix_s + latency_ms / 1000.0
+                    span_name = (sp.name or "").strip() or service
                     point = SpanPoint(
                         at_unix_s=at_s,
+                        start_unix_s=start_unix_s,
                         trace_id=trace_id,
                         span_id=span_id,
                         parent_span_id=parent_span_id,
+                        name=span_name,
                         service=service,
                         latency_ms=latency_ms,
                         is_error=is_error,
