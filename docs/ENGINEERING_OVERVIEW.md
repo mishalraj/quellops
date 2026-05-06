@@ -62,7 +62,7 @@ flowchart LR
 
 ### 3.2 Kubernetes signals
 
-- **`aidbg-agent`** uses shared informers (Deployments, Pods, Events) and maps cluster changes to a small JSON schema (`agent/main.go`).
+- **`aidbg-agent`** uses shared informers (Deployments, Pods, Events) and maps cluster changes to a small JSON schema (`agent/main.go`). Rollout updates emit types like **`deploy.started`** / **`deploy.completed`** / **`deploy.failed`** (not only `k8s.deployment.added`); the ranker treats these as deployment signals for **`recent_deploy`**.
 - Each signal is sent to **`POST /ingest/k8s`** on the backend.
 - Backend wraps payloads as `K8sSignal` and appends to an in-memory deque (`backend/src/aidbg/api.py`, `engine.py`).
 

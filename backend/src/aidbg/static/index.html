@@ -331,6 +331,52 @@
       color: var(--muted);
       margin-bottom: 0.5rem;
     }
+    .insight-box .badge.conf { color: var(--accent); border-color: var(--accent-dim); }
+    .insight-box .badge.warn { color: var(--danger); border-color: var(--danger); }
+    .insight-llm-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .insight-lead {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--text);
+      margin: 0 0 1rem;
+    }
+    .insight-h4 {
+      margin: 0.85rem 0 0.4rem;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .insight-ul, .insight-ol {
+      margin: 0 0 0.5rem;
+      padding-left: 1.15rem;
+      color: #b8c5d6;
+      font-size: 0.84rem;
+    }
+    .insight-ul li, .insight-ol li { margin-bottom: 0.35rem; }
+    details.insight-raw {
+      margin-top: 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0c1018;
+    }
+    details.insight-raw summary {
+      padding: 0.45rem 0.65rem;
+      cursor: pointer;
+      font-size: 0.72rem;
+      color: var(--muted);
+      user-select: none;
+    }
+    details.insight-raw pre {
+      margin: 0;
+      padding: 0.65rem;
+      font-size: 0.68rem;
+      overflow: auto;
+      max-height: 200px;
+      border-top: 1px solid var(--border);
+      background: #080b10;
+    }
     details.raw {
       margin-top: 1rem;
       border: 1px solid var(--border);
@@ -369,6 +415,131 @@
       pointer-events: none;
     }
     .toast.show { opacity: 1; }
+
+    /* Trace-style focused paths (replaces bubble graph as primary view) */
+    #traceFocus { padding: 0.75rem 1rem 1rem; min-height: 200px; }
+    .trace-banner {
+      background: rgba(240, 113, 120, 0.12);
+      border: 1px solid rgba(240, 113, 120, 0.45);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.84rem;
+      margin-bottom: 1rem;
+      color: #f0c4c6;
+    }
+    .trace-story {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0c1018;
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    .trace-story-head {
+      padding: 0.55rem 0.85rem;
+      background: var(--panel2);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .trace-story-head strong { color: var(--text); font-size: 0.95rem; }
+    .pill-warn {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      background: rgba(235, 195, 71, 0.2);
+      color: var(--warn);
+    }
+    .pill-danger {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      background: rgba(240, 113, 120, 0.18);
+      color: #f07178;
+    }
+    .pill-deploy {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      background: rgba(235, 195, 71, 0.15);
+      color: var(--warn);
+    }
+    .trace-block { padding: 0.65rem 0.85rem; }
+    .trace-block h4 {
+      margin: 0 0 0.45rem;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .trace-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.5rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.8rem;
+    }
+    .trace-node {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.35rem 0.55rem;
+      background: var(--panel);
+      min-width: 6.5rem;
+    }
+    .trace-node.focus {
+      border-color: var(--accent);
+      background: rgba(77, 163, 255, 0.12);
+    }
+    .trace-node.slow {
+      box-shadow: 0 0 0 2px rgba(235, 195, 71, 0.45);
+    }
+    .trace-node.victim {
+      border-color: #f07178;
+      background: rgba(240, 113, 120, 0.08);
+    }
+    .trace-node.deploy-hit {
+      border-color: var(--warn);
+      background: rgba(235, 195, 71, 0.08);
+    }
+    .trace-node.risk {
+      border-color: #c45c65;
+    }
+    .trace-node .tn-name { display: block; font-weight: 600; color: var(--text); }
+    .trace-node .tn-meta { font-size: 0.68rem; color: var(--muted); }
+    .trace-hop {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 6px;
+      background: #141c28;
+      border: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .trace-hop.bad {
+      border-color: #f07178;
+      color: #ffb4b8;
+      background: rgba(240, 113, 120, 0.1);
+    }
+    .trace-hop .arr { color: var(--accent); font-weight: 700; }
+    details.topology-panel { border: none; background: transparent; margin-top: 0.5rem; }
+    details.topology-panel summary {
+      cursor: pointer;
+      font-size: 0.78rem;
+      color: var(--muted);
+      padding: 0.35rem 0;
+      user-select: none;
+    }
+    details.topology-panel summary:hover { color: var(--accent); }
+    #graphNetwork { min-height: 300px; background: #0c1018; border-radius: 8px; border: 1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -443,11 +614,15 @@
       <div class="split">
         <div class="section" style="margin-top:0;">
           <div class="section-head">
-            <h2>Service graph</h2>
-            <span>From trace-derived edges · <span id="graphMeta">—</span></span>
+            <h2>Focused paths</h2>
+            <span>Trace-style hops around anomalies &amp; ranked causes · <span id="graphMeta">—</span></span>
           </div>
           <div class="panel">
-            <div id="graphNetwork"></div>
+            <div id="traceFocus"></div>
+            <details class="topology-panel">
+              <summary>Full topology (force layout — optional)</summary>
+              <div id="graphNetwork"></div>
+            </details>
           </div>
         </div>
         <div class="section" style="margin-top:0;">
@@ -532,12 +707,170 @@
       return "";
     }
 
+    function renderTraceFocus(incident, graph, anomalies) {
+      const el = $("traceFocus");
+      const edges = graph.edges || [];
+      const nodes = graph.nodes || [];
+      const nmap = Object.fromEntries(nodes.map((n) => [n.id, n]));
+      const windowS = graph.window_s || "—";
+
+      const anomalyByEntity = {};
+      (anomalies || []).forEach((a) => {
+        if (a.entity) anomalyByEntity[a.entity] = a;
+      });
+      const causes = incident.top_causes || [];
+      const depVictim = causes.find((c) => String(c.type || "").toLowerCase().includes("dependency") && c.entity)?.entity;
+      const deployEntity = causes.find((c) => String(c.type || "").toLowerCase().includes("recent_deploy") && c.entity)?.entity;
+
+      const focus = new Set();
+      Object.keys(anomalyByEntity).forEach((e) => focus.add(e));
+      causes.forEach((c) => {
+        if (c.entity) focus.add(c.entity);
+      });
+
+      let worstEdge = null;
+      let worstErr = -1;
+      edges.forEach((e) => {
+        const er = e.error_rate != null ? Number(e.error_rate) : 0;
+        if (er > worstErr) {
+          worstErr = er;
+          worstEdge = e;
+        }
+      });
+      if (worstEdge && worstErr >= 0.03) {
+        focus.add(worstEdge.source);
+        focus.add(worstEdge.target);
+      }
+
+      if (!focus.size) {
+        el.innerHTML =
+          "<div class='empty-state'>No focus services yet. This view highlights <strong>call paths</strong> when anomalies, ranked causes, or high-error edges exist. Ingest traces and run a scenario, or open <em>Full topology</em> below.</div>";
+        $("graphMeta").textContent = windowS + "s window · 0 focus · open full topology for full graph";
+        return 0;
+      }
+
+      function nodeHtml(id, isCenter) {
+        const n = nmap[id] || {};
+        const er = (n.error_rate != null ? Number(n.error_rate) : 0) * 100;
+        const req = n.request_count != null ? n.request_count : 0;
+        const an = anomalyByEntity[id];
+        const slow = !!(an && String(an.kind || "").toLowerCase().includes("latency"));
+        const parts = ["trace-node"];
+        if (isCenter) parts.push("focus");
+        if (id === depVictim) parts.push("victim");
+        if (id === deployEntity) parts.push("deploy-hit");
+        if (slow) parts.push("slow");
+        if (er >= 5) parts.push("risk");
+        return (
+          "<div class='" +
+          parts.join(" ") +
+          "'><span class='tn-name'>" +
+          escapeHtml(id) +
+          "</span><span class='tn-meta'>" +
+          req +
+          " spans · " +
+          er.toFixed(1) +
+          "% err</span></div>"
+        );
+      }
+
+      function hopHtml(e, forceBad) {
+        const er = (e.error_rate != null ? Number(e.error_rate) : 0) * 100;
+        const p95 = e.p95_latency_ms != null ? Number(e.p95_latency_ms).toFixed(0) : "—";
+        const bad = forceBad || er >= 5 || (e.p95_latency_ms != null && e.p95_latency_ms > 500);
+        const cls = bad ? "trace-hop bad" : "trace-hop";
+        return (
+          "<span class='" +
+          cls +
+          "'><span class='arr'>→</span>" +
+          escapeHtml(p95) +
+          " ms p95 · " +
+          er.toFixed(1) +
+          "% err · " +
+          (e.request_count || 0) +
+          " calls</span>"
+        );
+      }
+
+      let html = "";
+      if (worstEdge && worstErr >= 0.05) {
+        html +=
+          "<div class='trace-banner'><strong>High-error hop:</strong> " +
+          escapeHtml(worstEdge.source) +
+          " → " +
+          escapeHtml(worstEdge.target) +
+          " (" +
+          (worstErr * 100).toFixed(1) +
+          "% error rate on this edge in the window)</div>";
+      } else if (depVictim && worstEdge && worstEdge.target === depVictim) {
+        html +=
+          "<div class='trace-banner'><strong>Dependency signal on " +
+          escapeHtml(depVictim) +
+          ":</strong> inbound from " +
+          escapeHtml(worstEdge.source) +
+          " shows " +
+          (worstErr * 100).toFixed(1) +
+          "% errors — inspect upstream caller and downstream health.</div>";
+      }
+
+      const sortedFocus = [...focus].filter((id) => id).sort();
+      sortedFocus.forEach((svc) => {
+        const ups = edges.filter((e) => e.target === svc).sort((a, b) => (b.request_count || 0) - (a.request_count || 0));
+        const downs = edges.filter((e) => e.source === svc).sort((a, b) => (b.request_count || 0) - (a.request_count || 0));
+        const an = anomalyByEntity[svc];
+
+        html += "<div class='trace-story'><div class='trace-story-head'>Service <strong>" + escapeHtml(svc) + "</strong>";
+        if (an) html += "<span class='pill-warn'>" + escapeHtml(an.kind || "anomaly") + "</span>";
+        if (depVictim === svc) html += "<span class='pill-danger'>dependency / availability</span>";
+        if (deployEntity === svc) html += "<span class='pill-deploy'>recent deploy</span>";
+        if (causes.some((c) => c.entity === svc && String(c.type || "").toLowerCase().includes("traffic")))
+          html += "<span class='pill-warn' style='background:rgba(77,163,255,0.15);color:var(--accent)'>high volume</span>";
+        html += "</div>";
+
+        html += "<div class='trace-block'><h4>Inbound (who calls this service)</h4>";
+        if (ups.length) {
+          ups.slice(0, 6).forEach((e) => {
+            const bad = (e.error_rate || 0) >= 0.05;
+            html +=
+              "<div class='trace-line'>" +
+              nodeHtml(e.source, false) +
+              hopHtml(e, bad) +
+              nodeHtml(svc, true) +
+              "</div>";
+          });
+        } else {
+          html += "<div class='trace-line'><span class='muted' style='color:var(--muted)'>No inbound edges in this window.</span></div>";
+        }
+        html += "</div>";
+
+        html += "<div class='trace-block'><h4>Outbound (what this service calls)</h4>";
+        if (downs.length) {
+          downs.slice(0, 6).forEach((e) => {
+            const bad = (e.error_rate || 0) >= 0.05;
+            html +=
+              "<div class='trace-line'>" +
+              nodeHtml(svc, true) +
+              hopHtml(e, bad) +
+              nodeHtml(e.target, false) +
+              "</div>";
+          });
+        } else {
+          html += "<div class='trace-line'><span class='muted' style='color:var(--muted)'>No outbound edges in this window.</span></div>";
+        }
+        html += "</div></div>";
+      });
+
+      el.innerHTML = html;
+      $("graphMeta").textContent =
+        windowS + "s · " + sortedFocus.length + " focused service(s) · " + nodes.length + " nodes in full graph";
+      return sortedFocus.length;
+    }
+
     function renderGraph(snapshot) {
       const nodes = snapshot.nodes || [];
       const edges = snapshot.edges || [];
       if (typeof vis === "undefined") {
         $("graphNetwork").innerHTML = "<div class='empty-state'>Graph library unavailable (check network). Use <a href='/graph/snapshot' style='color:var(--accent)'>/graph/snapshot</a>.</div>";
-        $("graphMeta").textContent = "—";
         return;
       }
       if (!nodes.length) {
@@ -546,7 +879,6 @@
           graphNetwork = null;
         }
         $("graphNetwork").innerHTML = "<div class='empty-state'>No graph nodes yet — wait for OTLP traces.</div>";
-        $("graphMeta").textContent = (snapshot.window_s || "—") + "s window";
         return;
       }
       const el = $("graphNetwork");
@@ -580,7 +912,6 @@
         graphNetwork.setData(data);
         graphNetwork.stabilize(50);
       }
-      $("graphMeta").textContent = (snapshot.window_s || "—") + "s window · " + visNodes.length + " nodes · " + visEdges.length + " edges";
     }
 
     function renderBars(services) {
@@ -641,24 +972,110 @@
       }).join("");
     }
 
+    function normalizeExplainPayload(ex) {
+      if (!ex || typeof ex !== "object") return {};
+      let summary = ex.summary;
+      let bullets = ex.evidence_bullets;
+      let fixes = ex.suggested_fixes;
+      let ranked = ex.ranked_causes;
+      let conf = ex.confidence;
+      if (typeof summary === "string") {
+        const t = summary.trim();
+        if (t.startsWith("{") && t.endsWith("}")) {
+          try {
+            const inner = JSON.parse(t);
+            if (inner && typeof inner === "object") {
+              if (inner.summary != null) summary = inner.summary;
+              if (Array.isArray(inner.evidence_bullets)) bullets = inner.evidence_bullets;
+              if (Array.isArray(inner.suggested_fixes)) fixes = inner.suggested_fixes;
+              if (inner.ranked_causes != null) ranked = inner.ranked_causes;
+              if (inner.confidence != null) conf = inner.confidence;
+            }
+          } catch (_) { /* keep string summary */ }
+        }
+      }
+      return { summary, evidence_bullets: bullets, suggested_fixes: fixes, ranked_causes: ranked, confidence: conf };
+    }
+
+    function renderInsightList(title, items, ordered) {
+      if (!Array.isArray(items) || !items.length) return "";
+      const tag = ordered ? "ol" : "ul";
+      const cls = ordered ? "insight-ol" : "insight-ul";
+      const lis = items.map((item) => {
+        if (item != null && typeof item === "object") {
+          const line =
+            item.type && item.entity
+              ? item.type + " · " + item.entity
+              : item.description || item.text || JSON.stringify(item);
+          return "<li>" + escapeHtml(String(line)) + "</li>";
+        }
+        return "<li>" + escapeHtml(String(item)) + "</li>";
+      }).join("");
+      return "<h4 class='insight-h4'>" + escapeHtml(title) + "</h4><" + tag + " class='" + cls + "'>" + lis + "</" + tag + ">";
+    }
+
     function renderInsight(explain, incident) {
       const box = $("insightBox");
       const causes = (incident.top_causes || []).map((c) => c.type + (c.entity ? " (" + c.entity + ")" : "")).join(", ");
       const anomN = (incident.anomalies || []).length;
-      let llm = "";
+
       if (explain.provider === "disabled" || explain.reason === "missing_azure_openai_env") {
-        llm = "<p><span class='badge'>LLM off</span> Configure <code>AZURE_OPENAI_*</code> on the backend for narrative insights. Until then, use <strong>ranked hypotheses</strong> and the <strong>service graph</strong> above.</p>";
-      } else if (explain.summary) {
-        llm = "<p><span class='badge'>LLM</span> " + escapeHtml(String(explain.summary)) + "</p>";
-      } else {
-        llm = "<p><span class='badge'>LLM</span> " + escapeHtml(JSON.stringify(explain).slice(0, 400)) + "</p>";
+        box.innerHTML =
+          "<p><span class='badge'>LLM off</span> Set <code>AZURE_OPENAI_*</code> on the backend (see <code>docs/LLM_SETUP.md</code>). Until then, use <strong>Ranked hypotheses</strong>, the <strong>service graph</strong>, and <strong>/incident/latest</strong>.</p>" +
+          "<p class='insight-h4' style='margin-top:1rem'>Heuristic readout</p>" +
+          "<ul class='insight-ul'><li>" +
+          anomN +
+          " anomaly row(s)</li><li>Top cause types: " +
+          escapeHtml(causes || "—") +
+          "</li><li>Incident confidence: " +
+          (incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—") +
+          "</li></ul>";
+        return;
       }
-      const structured =
-        "<p><strong>Structured readout</strong></p><ul style='margin:0.35rem 0 0 1rem;padding:0;color:var(--muted);font-size:0.82rem'>" +
-        "<li>" + anomN + " anomaly row(s) in API response</li>" +
-        "<li>Top cause types: " + escapeHtml(causes || "—") + "</li>" +
-        "<li>Confidence: " + (incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—") + "</li></ul>";
-      box.innerHTML = llm + structured;
+
+      const p = normalizeExplainPayload(explain);
+      const parts = [];
+      parts.push("<div class='insight-llm-header'>");
+      parts.push("<span class='badge'>" + escapeHtml(explain.provider || "LLM") + "</span>");
+      if (p.confidence != null && !Number.isNaN(Number(p.confidence))) {
+        parts.push(
+          "<span class='badge conf'>Model confidence " + (Number(p.confidence) <= 1 ? (Number(p.confidence) * 100).toFixed(0) + "%" : escapeHtml(String(p.confidence))) + "</span>"
+        );
+      }
+      if (explain.error) {
+        parts.push("<span class='badge warn'>" + escapeHtml(String(explain.error)) + "</span>");
+      }
+      parts.push("</div>");
+
+      if (p.summary != null && String(p.summary).trim() !== "") {
+        parts.push("<p class='insight-lead'>" + escapeHtml(String(p.summary).trim()) + "</p>");
+      }
+
+      parts.push(renderInsightList("Likely causes", p.ranked_causes, false));
+      parts.push(renderInsightList("Evidence", p.evidence_bullets, false));
+      parts.push(renderInsightList("Suggested checks", p.suggested_fixes, true));
+
+      if (!p.summary && !p.ranked_causes?.length && !p.evidence_bullets?.length && !p.suggested_fixes?.length) {
+        parts.push("<p class='insight-lead' style='color:var(--muted)'>No structured fields returned. Open <em>Raw LLM response</em> below.</p>");
+      }
+
+      parts.push(
+        "<p class='insight-h4' style='margin-top:1rem'>Heuristic readout (same incident)</p>" +
+          "<ul class='insight-ul'><li>" +
+          anomN +
+          " anomaly row(s)</li><li>Ranker top causes: " +
+          escapeHtml(causes || "—") +
+          "</li><li>Ranker confidence: " +
+          (incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—") +
+          "</li></ul>"
+      );
+
+      const rawJson = JSON.stringify(explain, null, 2);
+      parts.push(
+        "<details class='insight-raw'><summary>Raw LLM response (JSON)</summary><pre>" + escapeHtml(rawJson) + "</pre></details>"
+      );
+
+      box.innerHTML = parts.join("");
     }
 
     async function load() {
@@ -695,6 +1112,7 @@
         $("svcWindow").textContent = "Rolling " + (svc.window_s ?? "—") + "s window · sorted by volume";
 
         renderBars(services);
+        renderTraceFocus(incident, graph, anom.anomalies || []);
         renderGraph(graph);
         renderCauses(incident.top_causes || []);
         renderAnomalies(anom.anomalies || []);

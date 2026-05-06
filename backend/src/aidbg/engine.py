@@ -17,6 +17,18 @@ def _pct(values: list[float], percentile: float) -> float:
     return values[idx]
 
 
+def _event_suggests_recent_deploy(ev_type: str) -> bool:
+    """Match agent event types: k8s.deployment.*, deploy.started|completed|failed, rollout strings."""
+    tl = str(ev_type).lower()
+    if "deployment" in tl:
+        return True
+    if tl.startswith("deploy."):
+        return True
+    if "rollout" in tl:
+        return True
+    return False
+
+
 def _pick_top_causes(candidates: list[dict[str, Any]], k: int = 3) -> list[dict[str, Any]]:
     """Prefer a mix of cause types: at most two traffic_spike rows, then backfill by score."""
     if not candidates:
@@ -230,7 +242,7 @@ class SignalStore:
         deploy_candidates: list[dict[str, Any]] = []
         for ev in reversed(recent_events):
             t = ev.get("type", "")
-            if "deployment" not in str(t).lower():
+            if not _event_suggests_recent_deploy(str(t)):
                 continue
             age_s = (now_ms - int(ev.get("at_unix_ms", now_ms))) / 1000.0
             if age_s > 1800:
@@ -240,12 +252,23 @@ class SignalStore:
                 "event_type": ev.get("type"),
                 "age_s": round(age_s, 1),
             }
+            fields = ev.get("fields") or {}
+            if isinstance(fields, dict):
+                if fields.get("rollout_status"):
+                    evidence["rollout_status"] = fields["rollout_status"]
+                if fields.get("updated_replicas") is not None:
+                    evidence["updated_replicas"] = fields.get("updated_replicas")
+                if fields.get("ready_replicas") is not None:
+                    evidence["ready_replicas"] = fields.get("ready_replicas")
             if ev.get("reason"):
                 evidence["k8s_reason"] = ev.get("reason")
             if ev.get("message"):
                 msg = str(ev.get("message"))
                 evidence["k8s_message"] = msg if len(msg) <= 240 else msg[:237] + "..."
             score = max(0.1, 1.0 - (age_s / 1800.0))
+            if str(t).lower().startswith("deploy.") and "started" in str(t).lower():
+                score += 0.08
+                evidence["rollout_phase"] = "in_progress"
             if name in affected_entities:
                 score += 0.25
                 evidence["service_match"] = True
@@ -264,6 +287,12 @@ class SignalStore:
             )
             if len(deploy_candidates) >= 5:
                 break
+        _dedup_deploy: dict[tuple[str, str], dict[str, Any]] = {}
+        for c in deploy_candidates:
+            k = (str(c.get("entity") or ""), str(c.get("namespace") or ""))
+            if k not in _dedup_deploy or float(c["score"]) > float(_dedup_deploy[k]["score"]):
+                _dedup_deploy[k] = c
+        deploy_candidates = list(_dedup_deploy.values())
         dependency_down_candidates: list[dict[str, Any]] = []
         for ev in reversed(recent_events):
             t = str(ev.get("type", ""))
