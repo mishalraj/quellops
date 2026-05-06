@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>aidbg — live incident view</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --warn: #f0b429;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+    header .sub { color: var(--muted); font-size: 0.85rem; }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .controls label { font-size: 0.85rem; color: var(--muted); }
+    .controls a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .controls a:hover { text-decoration: underline; }
+    main {
+      padding: 1rem 1.5rem 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+    }
+    .card h2 {
+      margin: 0 0 0.5rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .metric { font-size: 1.35rem; font-weight: 600; }
+    .metric small { display: block; font-size: 0.8rem; color: var(--muted); font-weight: 400; margin-top: 0.25rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:last-child td { border-bottom: none; }
+    .pill {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      background: #243044;
+      color: var(--accent);
+    }
+    pre {
+      margin: 0;
+      padding: 1rem;
+      background: #0c1017;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: auto;
+      font-size: 0.78rem;
+      max-height: 320px;
+    }
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 1.25rem 0 0.5rem;
+    }
+    .err {
+      color: #f07178;
+      font-size: 0.9rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .status-dot.off { background: #f07178; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>aidbg live view</h1>
+      <div class="sub">Ingest + graph + heuristic incident ranker (MVP)</div>
+    </div>
+    <div class="controls">
+      <label><span class="status-dot" id="liveDot"></span><input type="checkbox" id="auto" checked /> Auto-refresh (3s)</label>
+      <button type="button" id="refreshBtn" style="padding:0.35rem 0.75rem;border-radius:6px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;">Refresh now</button>
+      <a href="/docs" target="_blank" rel="noopener">OpenAPI /docs</a>
+    </div>
+  </header>
+  <main>
+    <div id="errBox" class="err" style="display:none;"></div>
+    <div class="grid">
+      <div class="card">
+        <h2>OTLP ingest</h2>
+        <div class="metric" id="ingestSpans">—</div>
+        <small id="ingestMeta">spans received</small>
+      </div>
+      <div class="card">
+        <h2>Incident confidence</h2>
+        <div class="metric" id="confidence">—</div>
+        <small>from <code>/incident/latest</code></small>
+      </div>
+      <div class="card">
+        <h2>Services (window)</h2>
+        <div class="metric" id="svcCount">—</div>
+        <small id="svcWindow">—</small>
+      </div>
+    </div>
+
+    <div class="section-title">Top causes</div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead><tr><th>Type</th><th>Entity</th><th>Score</th><th>Evidence</th></tr></thead>
+        <tbody id="causesBody"><tr><td colspan="4" style="color:var(--muted);">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Anomalies</div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead><tr><th>Kind</th><th>Entity</th><th>Detail</th></tr></thead>
+        <tbody id="anomBody"><tr><td colspan="3" style="color:var(--muted);">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Explain layer (summary)</div>
+    <div class="card">
+      <p id="explainSummary" style="margin:0;color:var(--muted);">Loading…</p>
+    </div>
+
+    <div class="section-title">Raw incident JSON</div>
+    <pre id="rawIncident">{}</pre>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let timer = null;
+
+    function showErr(msg) {
+      const box = $("errBox");
+      if (!msg) { box.style.display = "none"; box.textContent = ""; return; }
+      box.style.display = "block";
+      box.textContent = msg;
+    }
+
+    async function fetchJson(path) {
+      const r = await fetch(path);
+      if (!r.ok) throw new Error(path + " → " + r.status);
+      return r.json();
+    }
+
+    async function load() {
+      $("liveDot").classList.remove("off");
+      showErr("");
+      try {
+        const [ingest, incident, anom, explain, svc] = await Promise.all([
+          fetchJson("/stats/ingest"),
+          fetchJson("/incident/latest"),
+          fetchJson("/anomalies/latest"),
+          fetchJson("/explain/latest"),
+          fetchJson("/stats/services"),
+        ]);
+
+        $("ingestSpans").textContent = ingest.spans_received != null ? ingest.spans_received : "—";
+        $("ingestMeta").textContent =
+          "batches: " + (ingest.requests_received ?? "—") +
+          (ingest.last_ingest_unix_s != null
+            ? " · last " + new Date(ingest.last_ingest_unix_s * 1000).toLocaleTimeString()
+            : "");
+
+        $("confidence").textContent =
+          incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—";
+
+        const services = svc.services || [];
+        $("svcCount").textContent = services.length;
+        $("svcWindow").textContent = "window " + (svc.window_s ?? "—") + "s · top by volume in table below";
+
+        const causes = incident.top_causes || [];
+        $("causesBody").innerHTML = causes.length
+          ? causes.map((c) => {
+              const ev = c.evidence && typeof c.evidence === "object"
+                ? JSON.stringify(c.evidence).slice(0, 120) + (JSON.stringify(c.evidence).length > 120 ? "…" : "")
+                : "—";
+              return "<tr><td><span class=\"pill\">" + escapeHtml(c.type || "") + "</span></td><td>" + escapeHtml(c.entity || "—") + "</td><td>" + (c.score != null ? Number(c.score).toFixed(2) : "—") + "</td><td style=\"color:var(--muted);font-size:0.8rem;\">" + escapeHtml(ev) + "</td></tr>";
+            }).join("")
+          : "<tr><td colspan=\"4\" style=\"color:var(--muted);\">No ranked causes yet</td></tr>";
+
+        const alist = anom.anomalies || [];
+        $("anomBody").innerHTML = alist.length
+          ? alist.map((a) => {
+              const d = a.magnitude != null ? "mag " + Number(a.magnitude).toFixed(2) : "";
+              return "<tr><td>" + escapeHtml(a.kind || "") + "</td><td>" + escapeHtml(a.entity || "—") + "</td><td style=\"color:var(--muted);font-size:0.8rem;\">" + escapeHtml(d) + "</td></tr>";
+            }).join("")
+          : "<tr><td colspan=\"3\" style=\"color:var(--muted);\">None in current/baseline windows</td></tr>";
+
+        const summ = explain.summary || explain.reason || JSON.stringify(explain).slice(0, 200);
+        $("explainSummary").textContent = typeof summ === "string" ? summ : JSON.stringify(summ);
+
+        $("rawIncident").textContent = JSON.stringify(incident, null, 2);
+      } catch (e) {
+        $("liveDot").classList.add("off");
+        showErr("Failed to load API: " + e.message);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function tick() {
+      if ($("auto").checked) load();
+    }
+
+    $("refreshBtn").addEventListener("click", load);
+    $("auto").addEventListener("change", () => {
+      if ($("auto").checked) load();
+    });
+
+    load();
+    timer = setInterval(tick, 3000);
+  </script>
+</body>
+</html>

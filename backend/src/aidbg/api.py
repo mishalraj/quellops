@@ -3,8 +3,11 @@ from __future__ import annotations
 import time
 import base64
 import json
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
@@ -28,6 +31,16 @@ class K8sEventIn(BaseModel):
 
 def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     app = FastAPI(title="aidbg-backend", version="0.1.0")
+
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.is_dir():
+        app.mount("/ui", StaticFiles(directory=str(static_dir), html=True), name="ui")
+
+    @app.get("/")
+    def root_redirect() -> RedirectResponse:
+        if static_dir.is_dir():
+            return RedirectResponse(url="/ui/", status_code=307)
+        return RedirectResponse(url="/docs", status_code=307)
 
     @app.get("/healthz")
     def healthz() -> dict:

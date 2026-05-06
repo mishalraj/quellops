@@ -14,6 +14,7 @@ Local-first MVP for an AI production debugger:
 2. Start backend:
    - Docker mode: `BACKEND_MODE=docker scripts/backend_up.sh`
    - Venv mode: `scripts/backend_up.sh`
+3. **Demo UI:** open [http://localhost:8088/ui/](http://localhost:8088/ui/) (live ingest, top causes, anomalies, explain summary). Root [http://localhost:8088/](http://localhost:8088/) redirects there.
 
 ## Backend APIs (MVP)
 
