@@ -6,6 +6,28 @@ from typing import Any
 from .config import Settings
 
 
+def _strip_markdown_json_fence(content: str) -> str:
+    """Models often wrap JSON in ```json ... ``` even when asked for raw JSON only."""
+    text = content.strip()
+    if not text.startswith("```"):
+        return text
+    lines = text.split("\n")
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _parse_llm_json_blob(content: str) -> dict[str, Any] | None:
+    text = _strip_markdown_json_fence(content)
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, Any]:
     if (
         not settings.azure_openai_endpoint
@@ -46,20 +68,30 @@ def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, 
     response = client.chat.completions.create(
         model=settings.azure_openai_deployment,
         messages=[
-            {"role": "system", "content": "You produce concise deterministic JSON only."},
+            {
+                "role": "system",
+                "content": (
+                    "You produce concise deterministic JSON only. "
+                    "Never wrap the JSON in markdown code fences or add prose before or after the object."
+                ),
+            },
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
     )
     content = (response.choices[0].message.content or "").strip()
-    try:
-        payload = json.loads(content)
-    except Exception:
+    payload = _parse_llm_json_blob(content)
+    if payload is None:
         payload = {
             "summary": content,
             "ranked_causes": incident.get("top_causes", []),
             "evidence_bullets": [],
             "suggested_fixes": [],
         }
+    else:
+        payload.setdefault("summary", "")
+        payload.setdefault("ranked_causes", incident.get("top_causes", []))
+        payload.setdefault("evidence_bullets", [])
+        payload.setdefault("suggested_fixes", [])
     payload["provider"] = "azure_openai"
     return payload

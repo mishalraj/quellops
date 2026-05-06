@@ -897,6 +897,36 @@
       }).join("");
     }
 
+    function stripMarkdownJsonFence(s) {
+      if (s == null || typeof s !== "string") return "";
+      let t = s.trim();
+      if (!t.startsWith("```")) return t;
+      const lines = t.split("\n");
+      let a = 0;
+      if (lines.length && lines[0].trim().startsWith("```")) a = 1;
+      let b = lines.length;
+      if (lines.length && lines[b - 1].trim() === "```") b = lines.length - 1;
+      return lines.slice(a, b).join("\n").trim();
+    }
+
+    /** If s is ```json { ... } ``` or a stringified incident-style object, merge into fields. */
+    function mergeExplainFieldsFromJsonString(s, fields) {
+      const t = stripMarkdownJsonFence(String(s || "").trim());
+      if (!t.startsWith("{") || !t.endsWith("}")) return false;
+      try {
+        const inner = JSON.parse(t);
+        if (!inner || typeof inner !== "object") return false;
+        fields.summary = inner.summary != null ? inner.summary : "";
+        if (Array.isArray(inner.evidence_bullets)) fields.bullets = inner.evidence_bullets;
+        if (Array.isArray(inner.suggested_fixes)) fields.fixes = inner.suggested_fixes;
+        if (inner.ranked_causes != null) fields.ranked = inner.ranked_causes;
+        if (inner.confidence != null) fields.conf = inner.confidence;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
     function normalizeExplainPayload(ex) {
       if (!ex || typeof ex !== "object") return {};
       let summary = ex.summary;
@@ -917,6 +947,15 @@
               if (inner.confidence != null) conf = inner.confidence;
             }
           } catch (_) { /* keep string summary */ }
+        } else if (t.startsWith("```")) {
+          const bag = { summary, bullets, fixes, ranked, conf };
+          if (mergeExplainFieldsFromJsonString(t, bag)) {
+            summary = bag.summary;
+            bullets = bag.bullets;
+            fixes = bag.fixes;
+            ranked = bag.ranked;
+            conf = bag.conf;
+          }
         }
       }
       return {
