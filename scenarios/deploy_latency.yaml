@@ -1,5 +1,6 @@
 name: deploy_latency
 description: Roll a deployment and expect deploy-ranked cause.
+wait_seconds: 60
 target:
   namespace: otel-demo
   deployment: frontend

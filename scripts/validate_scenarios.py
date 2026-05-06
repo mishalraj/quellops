@@ -40,6 +40,11 @@ def main() -> int:
             errors.append(f"{path}: assert.not_top_1_type must be a string when present")
         if not isinstance(allow_top_k, int) or allow_top_k <= 0:
             errors.append(f"{path}: assert.allow_top_k must be a positive integer")
+        wait_seconds = data.get("wait_seconds")
+        if wait_seconds is not None and (
+            not isinstance(wait_seconds, int) or wait_seconds <= 0
+        ):
+            errors.append(f"{path}: wait_seconds must be a positive integer when present")
         if not expect_top_types and not not_top_1_type:
             errors.append(
                 f"{path}: assert must define expect_top_types and/or not_top_1_type"

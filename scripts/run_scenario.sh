@@ -4,7 +4,6 @@ set -euo pipefail
 SCENARIO="${1:-}"
 BACKEND_URL="${BACKEND_URL:-http://localhost:8088}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-artifacts}"
-WAIT_SECONDS="${WAIT_SECONDS:-30}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SCENARIO_FILE=""
 
@@ -50,6 +49,15 @@ else:
     print(str(v))
 PY
 }
+
+_spec_wait="$(yaml_eval 'wait_seconds')"
+if [[ -n "${WAIT_SECONDS+set}" ]]; then
+  :
+elif [[ -n "$_spec_wait" && "$_spec_wait" =~ ^[0-9]+$ ]]; then
+  WAIT_SECONDS="$_spec_wait"
+else
+  WAIT_SECONDS=30
+fi
 
 inject() {
   local inject_type
@@ -112,6 +120,10 @@ assert_cfg = spec.get("assert", {}) or {}
 allow_top_k = int(assert_cfg.get("allow_top_k", 3))
 expect_top_types = assert_cfg.get("expect_top_types", []) or []
 not_top_1_type = assert_cfg.get("not_top_1_type")
+
+if (expect_top_types or not_top_1_type) and not causes:
+    print("FAIL: incident top_causes is empty (wait longer or check backend /graph)")
+    sys.exit(1)
 
 if not_top_1_type and top == not_top_1_type:
     print(f"FAIL: {not_top_1_type} incorrectly ranked top-1")
