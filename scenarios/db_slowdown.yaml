@@ -9,4 +9,6 @@ assert:
   expect_top_types:
     - recent_deploy
     - dependency_unavailable
+    - traffic_spike
+    - unknown_regression
   allow_top_k: 3

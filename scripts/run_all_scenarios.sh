@@ -16,11 +16,19 @@ fi
 
 "$PYTHON_BIN" scripts/validate_scenarios.py
 
+# dependency_down scales cart to 0; run load-spike before it so the next scenario
+# is not polluted by dependency_unavailable. Always restore cart on exit.
+cleanup_otel_demo_cart() {
+  kubectl -n otel-demo scale deploy/cart --replicas=1 >/dev/null 2>&1 || true
+  kubectl -n otel-demo rollout status deploy/cart --timeout=3m >/dev/null 2>&1 || true
+}
+trap cleanup_otel_demo_cart EXIT
+
 SCENARIOS=(
   deploy_latency
   db_slowdown
-  dependency_down
   traffic_spike_false_positive
+  dependency_down
 )
 
 echo "warming baseline load..."
