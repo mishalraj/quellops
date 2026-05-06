@@ -44,5 +44,4 @@ class Incident:
     generated_at_unix_ms: int
     anomalies: list[dict[str, Any]]
     top_causes: list[dict[str, Any]]
-    confidence: float
     graph_snapshot: dict[str, Any]

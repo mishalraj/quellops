@@ -17,7 +17,6 @@ def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, 
             "reason": "missing_azure_openai_env",
             "summary": "LLM explanation is disabled until Azure OpenAI env vars are configured.",
             "ranked_causes": incident.get("top_causes", []),
-            "confidence": incident.get("confidence", 0.0),
         }
     try:
         from openai import AzureOpenAI
@@ -27,7 +26,6 @@ def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, 
             "reason": "openai_package_missing",
             "error": str(exc),
             "ranked_causes": incident.get("top_causes", []),
-            "confidence": incident.get("confidence", 0.0),
         }
 
     client = AzureOpenAI(
@@ -37,7 +35,12 @@ def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, 
     )
     prompt = (
         "Given this incident JSON, explain the top likely causes and evidence in a deterministic way. "
-        "Return strict JSON only with keys: summary, ranked_causes, evidence_bullets, suggested_fixes, confidence.\n\n"
+        "Return strict JSON only with keys: summary, ranked_causes, evidence_bullets, suggested_fixes, confidence "
+        "(confidence is optional 0-1 for how well the narrative fits the JSON; omit if unsure).\n"
+        "ranked_causes MUST be a JSON array (not a string). Each element MUST be an object, either "
+        '{"cause":"short label","likelihood":"low|medium|high","reasoning":"one or two sentences"} '
+        "or {\"type\":\"...\",\"entity\":\"...\",\"reasoning\":\"optional\"} mirroring top_causes. "
+        "Do not put a single cause object at the top level instead of an array.\n\n"
         + json.dumps(incident)
     )
     response = client.chat.completions.create(
@@ -57,7 +60,6 @@ def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, 
             "ranked_causes": incident.get("top_causes", []),
             "evidence_bullets": [],
             "suggested_fixes": [],
-            "confidence": incident.get("confidence", 0.0),
         }
     payload["provider"] = "azure_openai"
     return payload

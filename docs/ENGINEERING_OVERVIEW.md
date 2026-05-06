@@ -130,12 +130,11 @@ Each scenario defines:
 
 - `anomalies` — from trace comparison (Section 3.3)
 - `top_causes` — **up to 3** ranked candidate causes
-- `confidence` — simple function of anomaly/candidate counts (cap 0.95)
 - `graph_snapshot` — nodes/edges with counts and p95 latency on edges
 
 ### 5.1 Candidate buckets (not ML)
 
-All candidates are **heuristic** and carry a numeric **`score`**. They are concatenated, **sorted by `score` descending**, and the top three become `top_causes`.
+All candidates are **heuristic** and carry a numeric **`score`**. They are concatenated and **sorted by `score` descending**. Then `_pick_top_causes()` fills **up to 3** slots with a **diversity rule**: at most **two** `traffic_spike` rows, then backfill from the remaining list by score so other cause types are not crowded out.
 
 1. **`recent_deploy`**  
    - Scans recent K8s events whose `type` contains `"deployment"`.  

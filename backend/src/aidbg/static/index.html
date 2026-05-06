@@ -182,27 +182,6 @@
     }
     .kpi .val { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.03em; }
     .kpi .sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; }
-    .kpi-ring-wrap {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-    .ring {
-      width: 56px; height: 56px;
-      border-radius: 50%;
-      background: conic-gradient(var(--accent) var(--p, 0%), var(--border) 0);
-      display: grid;
-      place-items: center;
-    }
-    .ring-inner {
-      width: 42px; height: 42px;
-      border-radius: 50%;
-      background: var(--panel);
-      display: grid;
-      place-items: center;
-      font-size: 0.75rem;
-      font-weight: 700;
-    }
     .section {
       margin-top: 1.35rem;
     }
@@ -355,50 +334,13 @@
       font-size: 0.84rem;
     }
     .insight-ul li, .insight-ol li { margin-bottom: 0.35rem; }
-    details.insight-raw {
-      margin-top: 0.85rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #0c1018;
-    }
-    details.insight-raw summary {
-      padding: 0.45rem 0.65rem;
-      cursor: pointer;
-      font-size: 0.72rem;
-      color: var(--muted);
-      user-select: none;
-    }
-    details.insight-raw pre {
-      margin: 0;
-      padding: 0.65rem;
-      font-size: 0.68rem;
-      overflow: auto;
-      max-height: 200px;
-      border-top: 1px solid var(--border);
-      background: #080b10;
-    }
-    details.raw {
-      margin-top: 1rem;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--panel);
-    }
-    details.raw summary {
-      padding: 0.65rem 1rem;
-      cursor: pointer;
+    .insight-li-sub {
+      margin-top: 0.3rem;
       font-size: 0.8rem;
       color: var(--muted);
-      user-select: none;
+      line-height: 1.45;
     }
-    details.raw pre {
-      margin: 0;
-      padding: 1rem;
-      background: #080b10;
-      font-size: 0.72rem;
-      overflow: auto;
-      max-height: 280px;
-      border-top: 1px solid var(--border);
-    }
+    .insight-meta { font-size: 0.78rem; color: var(--warn); font-weight: 500; }
     .toast {
       position: fixed;
       bottom: 1.25rem;
@@ -592,18 +534,6 @@
           <div class="val" id="ingestSpans">—</div>
           <div class="sub" id="ingestMeta">—</div>
         </div>
-        <div class="kpi warn">
-          <h3>Incident confidence</h3>
-          <div class="kpi-ring-wrap">
-            <div class="ring" id="confRing" style="--p: 0%;">
-              <div class="ring-inner" id="confRingLabel">—</div>
-            </div>
-            <div>
-              <div class="val" id="confidence">—</div>
-              <div class="sub">From latest incident payload</div>
-            </div>
-          </div>
-        </div>
         <div class="kpi">
           <h3>Active services</h3>
           <div class="val" id="svcCount">—</div>
@@ -666,11 +596,6 @@
           </div>
         </div>
       </div>
-
-      <details class="raw">
-        <summary>Raw incident JSON (for engineers)</summary>
-        <pre id="rawIncident">{}</pre>
-      </details>
     </div>
   </div>
   <div class="toast" id="toast">Copied</div>
@@ -994,23 +919,116 @@
           } catch (_) { /* keep string summary */ }
         }
       }
-      return { summary, evidence_bullets: bullets, suggested_fixes: fixes, ranked_causes: ranked, confidence: conf };
+      return {
+        summary,
+        evidence_bullets: coerceInsightArray(bullets),
+        suggested_fixes: coerceInsightArray(fixes),
+        ranked_causes: coerceInsightArray(ranked),
+        confidence: conf,
+      };
+    }
+
+    /** Turn list fields into arrays of parsed objects when the model returns JSON strings. */
+    function coerceInsightArray(raw) {
+      if (raw == null) return [];
+      let arr = raw;
+      if (!Array.isArray(arr)) {
+        if (typeof arr === "string") {
+          const t = arr.trim();
+          if (t.startsWith("[") && t.endsWith("]")) {
+            try {
+              arr = JSON.parse(t);
+            } catch (_) {
+              return [arr];
+            }
+          } else if (t.startsWith("{") && t.endsWith("}")) {
+            try {
+              const one = JSON.parse(t);
+              return Array.isArray(one) ? one.map(coerceInsightMaybeString) : [coerceInsightMaybeString(one)];
+            } catch (_) {
+              return [arr];
+            }
+          } else {
+            return [arr];
+          }
+        } else if (typeof arr === "object") {
+          return [coerceInsightMaybeString(arr)];
+        } else {
+          return [String(arr)];
+        }
+      }
+      if (!Array.isArray(arr)) return [];
+      return arr.map(coerceInsightMaybeString);
+    }
+
+    function coerceInsightMaybeString(item) {
+      if (typeof item === "string") {
+        const t = item.trim();
+        if (t.startsWith("{") && t.endsWith("}")) {
+          try {
+            return JSON.parse(t);
+          } catch (_) {
+            return item;
+          }
+        }
+      }
+      return item;
+    }
+
+    /** One row for insight lists: heuristic causes, LLM {cause, likelihood, reasoning}, or plain text. */
+    function insightItemToLi(item) {
+      if (item == null) return "<li>—</li>";
+      if (typeof item !== "object") return "<li>" + escapeHtml(String(item)) + "</li>";
+
+      if (item.type && item.entity) {
+        return "<li>" + escapeHtml(String(item.type) + " · " + String(item.entity)) + "</li>";
+      }
+
+      const causeLike =
+        item.cause != null
+          ? item.cause
+          : item.title != null
+            ? item.title
+            : item.name != null
+              ? item.name
+              : item.hypothesis != null
+                ? item.hypothesis
+                : null;
+      if (causeLike != null) {
+        const head = escapeHtml(String(causeLike));
+        const like =
+          item.likelihood != null
+            ? ' <span class="insight-meta">· ' + escapeHtml(String(item.likelihood)) + "</span>"
+            : "";
+        const reason =
+          item.reasoning != null
+            ? '<div class="insight-li-sub">' + escapeHtml(String(item.reasoning)) + "</div>"
+            : item.detail != null
+              ? '<div class="insight-li-sub">' + escapeHtml(String(item.detail)) + "</div>"
+              : "";
+        return "<li><strong class=\"insight-li-main\">" + head + "</strong>" + like + reason + "</li>";
+      }
+
+      if (item.description != null) return "<li>" + escapeHtml(String(item.description)) + "</li>";
+      if (item.text != null) return "<li>" + escapeHtml(String(item.text)) + "</li>";
+      if (item.point != null || item.fact != null) {
+        const p = item.point != null ? item.point : item.fact;
+        const d = item.detail != null ? '<div class="insight-li-sub">' + escapeHtml(String(item.detail)) + "</div>" : "";
+        return "<li>" + escapeHtml(String(p)) + d + "</li>";
+      }
+
+      try {
+        return "<li><pre class=\"insight-fallback\" style=\"margin:0.25rem 0 0;font-size:0.75rem;white-space:pre-wrap\">" + escapeHtml(JSON.stringify(item, null, 2)) + "</pre></li>";
+      } catch (_) {
+        return "<li>" + escapeHtml(String(item)) + "</li>";
+      }
     }
 
     function renderInsightList(title, items, ordered) {
       if (!Array.isArray(items) || !items.length) return "";
       const tag = ordered ? "ol" : "ul";
       const cls = ordered ? "insight-ol" : "insight-ul";
-      const lis = items.map((item) => {
-        if (item != null && typeof item === "object") {
-          const line =
-            item.type && item.entity
-              ? item.type + " · " + item.entity
-              : item.description || item.text || JSON.stringify(item);
-          return "<li>" + escapeHtml(String(line)) + "</li>";
-        }
-        return "<li>" + escapeHtml(String(item)) + "</li>";
-      }).join("");
+      const lis = items.map((item) => insightItemToLi(item)).join("");
       return "<h4 class='insight-h4'>" + escapeHtml(title) + "</h4><" + tag + " class='" + cls + "'>" + lis + "</" + tag + ">";
     }
 
@@ -1027,8 +1045,6 @@
           anomN +
           " anomaly row(s)</li><li>Top cause types: " +
           escapeHtml(causes || "—") +
-          "</li><li>Incident confidence: " +
-          (incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—") +
           "</li></ul>";
         return;
       }
@@ -1056,7 +1072,7 @@
       parts.push(renderInsightList("Suggested checks", p.suggested_fixes, true));
 
       if (!p.summary && !p.ranked_causes?.length && !p.evidence_bullets?.length && !p.suggested_fixes?.length) {
-        parts.push("<p class='insight-lead' style='color:var(--muted)'>No structured fields returned. Open <em>Raw LLM response</em> below.</p>");
+        parts.push("<p class='insight-lead' style='color:var(--muted)'>No structured fields returned from the model for this refresh.</p>");
       }
 
       parts.push(
@@ -1065,14 +1081,7 @@
           anomN +
           " anomaly row(s)</li><li>Ranker top causes: " +
           escapeHtml(causes || "—") +
-          "</li><li>Ranker confidence: " +
-          (incident.confidence != null ? (incident.confidence * 100).toFixed(0) + "%" : "—") +
           "</li></ul>"
-      );
-
-      const rawJson = JSON.stringify(explain, null, 2);
-      parts.push(
-        "<details class='insight-raw'><summary>Raw LLM response (JSON)</summary><pre>" + escapeHtml(rawJson) + "</pre></details>"
       );
 
       box.innerHTML = parts.join("");
@@ -1101,12 +1110,6 @@
             ? " · last ingest " + new Date(ingest.last_ingest_unix_s * 1000).toLocaleTimeString()
             : "");
 
-        const conf = incident.confidence != null ? incident.confidence : 0;
-        const confPct = Math.round(conf * 100);
-        $("confidence").textContent = confPct + "%";
-        $("confRing").style.setProperty("--p", confPct + "%");
-        $("confRingLabel").textContent = confPct + "%";
-
         const services = svc.services || [];
         $("svcCount").textContent = services.length;
         $("svcWindow").textContent = "Rolling " + (svc.window_s ?? "—") + "s window · sorted by volume";
@@ -1117,8 +1120,6 @@
         renderCauses(incident.top_causes || []);
         renderAnomalies(anom.anomalies || []);
         renderInsight(explain, incident);
-
-        $("rawIncident").textContent = JSON.stringify(incident, null, 2);
       } catch (e) {
         $("liveDot").classList.add("off");
         $("liveText").textContent = "Error";

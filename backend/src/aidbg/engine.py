@@ -379,7 +379,6 @@ class SignalStore:
             "generated_at_unix_ms": now_ms,
             "anomalies": anomalies,
             "top_causes": top_causes,
-            "confidence": min(0.95, 0.3 + 0.2 * len(anomalies) + 0.2 * len(top_causes[:1])),
             "graph_snapshot": graph,
         }
 
@@ -391,7 +390,6 @@ class SignalStore:
             "incident_generated_at_unix_ms": incident["generated_at_unix_ms"],
             "anomalies": service_anoms,
             "top_causes": incident["top_causes"],
-            "confidence": incident["confidence"],
         }
 
     def evidence_bundle(self, service: str, current_window_s: int, baseline_window_s: int) -> dict[str, Any]:
