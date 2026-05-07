@@ -54,6 +54,15 @@ try_step() {
   fi
 }
 
+extract_cloudflare_url() {
+  local log_file="$1"
+  if command -v rg >/dev/null 2>&1; then
+    rg -o "https://[-a-zA-Z0-9]+\.trycloudflare\.com" "$log_file" | head -n 1 || true
+    return 0
+  fi
+  grep -Eo "https://[-a-zA-Z0-9]+\.trycloudflare\.com" "$log_file" | head -n 1 || true
+}
+
 print_hr
 echo "aidbg background start + health checks"
 print_hr
@@ -106,7 +115,7 @@ fi
 
 sleep "$CF_START_WAIT_SECONDS"
 
-CF_URL="$(rg -o "https://[-a-zA-Z0-9]+\.trycloudflare\.com" "$CF_LOG_FILE" | head -n 1 || true)"
+CF_URL="$(extract_cloudflare_url "$CF_LOG_FILE")"
 if [[ -n "$CF_URL" ]]; then
   pass "cloudflare URL discovered: $CF_URL"
 else
@@ -149,12 +158,12 @@ fi
 
 COL_LOG_TAIL="$(kubectl -n aidbg-otel logs deploy/aidbg-otel-collector --tail=120 2>/dev/null || true)"
 if [[ -n "$COL_LOG_TAIL" ]]; then
-  if printf "%s" "$COL_LOG_TAIL" | rg -q "no such host|host\.docker\.internal"; then
+  if printf "%s" "$COL_LOG_TAIL" | grep -Eqi "no such host|host\.docker\.internal"; then
     fail "collector still shows host.docker.internal DNS errors"
   else
     pass "collector logs do not show host.docker.internal DNS errors"
   fi
-  if printf "%s" "$COL_LOG_TAIL" | rg -q "Exporting failed"; then
+  if printf "%s" "$COL_LOG_TAIL" | grep -qi "Exporting failed"; then
     warn "collector is still retrying failed exports (check endpoint/network)"
   else
     pass "collector shows no recent export retry failures"
