@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aidbg-demo-loadgen
+  namespace: aidbg-demo
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: loadgen
+          image: aidbg-demo/loadgen:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: EDGE_URL
+              value: http://edge.aidbg-demo.svc.cluster.local:8080/
+            - name: DURATION_SECONDS
+              value: "90"
+            - name: RPS
+              value: "10"

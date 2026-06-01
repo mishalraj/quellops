@@ -1,0 +1,31 @@
+name: 05_db_slowdown
+description: >
+  Real DB slowdown — drop inventory index, inject pg_sleep on queries,
+  simulate a code push; expect db_slow_query (or db_migration) in top causes.
+namespace: aidbg-demo
+target:
+  deployment: inventory
+inject:
+  type: db_slow_query_fault
+  fault_db_sleep_ms: 300
+  migration: drop_inventory_sku_index
+  post_changes:
+    - kind: code.push
+      entity: inventory
+      metadata:
+        repo: local/demo
+        branch: main
+        sha: db5l0wd0
+        files:
+          - demo/services/inventory/db.py
+wait_seconds: 50
+load:
+  duration_seconds: 90
+  rps: 10
+assert:
+  expect_top_types:
+    - db_slow_query
+    - db_migration
+  expect_entity: inventory
+  min_spans_received: 50
+  allow_top_k: 3

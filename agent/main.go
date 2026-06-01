@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -32,8 +33,16 @@ type Event struct {
 	Fields    map[string]string `json:"fields,omitempty"`
 }
 
-func postEvent(ctx context.Context, endpoint string, ev Event) error {
-	b, err := json.Marshal(ev)
+type ChangeEvent struct {
+	Kind      string            `json:"kind"`
+	AtUnixMs  int64             `json:"at_unix_ms"`
+	Entity    string            `json:"entity"`
+	Namespace string            `json:"namespace,omitempty"`
+	Metadata  map[string]string `json:"metadata"`
+}
+
+func postJSON(ctx context.Context, endpoint string, payload any) error {
+	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -53,10 +62,53 @@ func postEvent(ctx context.Context, endpoint string, ev Event) error {
 	return nil
 }
 
+func postEvent(ctx context.Context, endpoint string, ev Event) error {
+	return postJSON(ctx, endpoint, ev)
+}
+
+func postChange(ctx context.Context, endpoint string, ev ChangeEvent) error {
+	return postJSON(ctx, endpoint, ev)
+}
+
+func workloadEntity(labels map[string]string, name string) string {
+	if labels == nil {
+		return name
+	}
+	if app := labels["app"]; app != "" {
+		return app
+	}
+	if app := labels["app.kubernetes.io/name"]; app != "" {
+		return app
+	}
+	return name
+}
+
+func emitConfigChange(ctx context.Context, changeURL, clusterName, kind, namespace, name string, labels map[string]string, fields map[string]string) {
+	entity := workloadEntity(labels, name)
+	meta := map[string]string{
+		"resource":  kind,
+		"name":      name,
+		"cluster":   clusterName,
+		"operation": "updated",
+	}
+	for k, v := range fields {
+		meta[k] = v
+	}
+	_ = postChange(ctx, changeURL, ChangeEvent{
+		Kind:      "config.changed",
+		AtUnixMs:  time.Now().UnixMilli(),
+		Entity:    entity,
+		Namespace: namespace,
+		Metadata:  meta,
+	})
+}
+
 func main() {
 	var backendURL string
+	var changeURL string
 	var clusterName string
-	flag.StringVar(&backendURL, "backend-url", getenv("AIDBG_BACKEND_EVENT_URL", "http://aidbg-backend.aidbg:8088/ingest/k8s"), "backend ingest URL")
+	flag.StringVar(&backendURL, "backend-url", getenv("AIDBG_BACKEND_EVENT_URL", "http://aidbg-backend.aidbg:8088/ingest/k8s"), "backend k8s ingest URL")
+	flag.StringVar(&changeURL, "change-url", getenv("AIDBG_BACKEND_CHANGE_URL", "http://aidbg-backend.aidbg:8088/ingest/change"), "backend change ingest URL")
 	flag.StringVar(&clusterName, "cluster", getenv("AIDBG_CLUSTER", ""), "cluster name (optional)")
 	flag.Parse()
 
@@ -215,6 +267,43 @@ func main() {
 		},
 	})
 
+	// ConfigMaps
+	cmInf := factory.Core().V1().ConfigMaps().Informer()
+	_, _ = cmInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, newObj any) {
+			meta := mustMeta(newObj)
+			emitConfigChange(ctx, changeURL, clusterName, "ConfigMap", meta.Namespace, meta.Name, meta.Labels, map[string]string{
+				"resource_version": meta.ResourceVersion,
+			})
+		},
+	})
+
+	// Secrets (metadata only; never post secret data)
+	secretInf := factory.Core().V1().Secrets().Informer()
+	_, _ = secretInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, newObj any) {
+			meta := mustMeta(newObj)
+			emitConfigChange(ctx, changeURL, clusterName, "Secret", meta.Namespace, meta.Name, meta.Labels, map[string]string{
+				"resource_version": meta.ResourceVersion,
+			})
+		},
+	})
+
+	// HPAs
+	hpaInf := factory.Autoscaling().V2().HorizontalPodAutoscalers().Informer()
+	_, _ = hpaInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, newObj any) {
+			meta := mustMeta(newObj)
+			fields := map[string]string{
+				"resource_version": meta.ResourceVersion,
+			}
+			if hpa, ok := newObj.(*autoscalingv2.HorizontalPodAutoscaler); ok && hpa.Spec.ScaleTargetRef.Name != "" {
+				fields["scale_target"] = hpa.Spec.ScaleTargetRef.Name
+			}
+			emitConfigChange(ctx, changeURL, clusterName, "HorizontalPodAutoscaler", meta.Namespace, meta.Name, meta.Labels, fields)
+		},
+	})
+
 	factory.Start(stopCh)
 	factory.WaitForCacheSync(stopCh)
 
@@ -242,7 +331,5 @@ func deploymentStatus(obj any) string {
 	if _, err := strconv.Atoi(genS); err != nil {
 		return "in_progress"
 	}
-	// Lightweight heuristic only; full rollout condition inspection can be added later.
 	return "completed"
 }
-

@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+ARG SERVICE=catalog
+ENV SERVICE_NAME=${SERVICE}
+# SERVICE_NAME is fixed per image build (catalog|inventory|checkout|edge)
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY services/ ./services/
+COPY tools/ ./tools/
+
+EXPOSE 8080
+CMD ["sh", "-c", "uvicorn services.${SERVICE_NAME}.app:app --host 0.0.0.0 --port 8080"]

@@ -1,0 +1,22 @@
+name: 03_traffic_spike
+description: High load on edge without a new deploy on catalog.
+namespace: aidbg-demo
+target:
+  deployment: edge
+inject:
+  type: load_only
+wait_seconds: 10
+load:
+  duration_seconds: 120
+  rps: 12
+assert:
+  expect_top_type: traffic_spike
+  expect_entity_in_top_k: true
+  entities_allow:
+    - edge
+    - checkout
+    - inventory
+    - catalog
+  not_top_1_type: recent_deploy
+  min_spans_received: 80
+  allow_top_k: 3

@@ -5,13 +5,14 @@ import base64
 import json
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .change_ingest import github_push_to_change_events, load_service_map
 from .config import Settings
-from .engine import K8sSignal
+from .engine import ChangeEvent, K8sSignal
 from .explain_llm import explain_incident
 from .ingest_otlp import StatsStore
 
@@ -29,8 +30,29 @@ class K8sEventIn(BaseModel):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class ChangeEventIn(BaseModel):
+    kind: str
+    at_unix_ms: int = Field(default_factory=lambda: 0)
+    entity: str
+    namespace: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
 def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     app = FastAPI(title="aidbg-backend", version="0.1.0")
+    service_map = load_service_map(Path(settings.service_map_path))
+
+    def _store_change(payload: ChangeEventIn) -> None:
+        at_unix_ms = payload.at_unix_ms or int(time.time() * 1000)
+        stats.signals.add_change_event(
+            ChangeEvent(
+                kind=payload.kind,
+                at_unix_ms=at_unix_ms,
+                entity=payload.entity,
+                namespace=payload.namespace,
+                metadata=payload.metadata,
+            )
+        )
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.is_dir():
@@ -73,6 +95,27 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
             )
         )
         return {"ok": True}
+
+    @app.post("/ingest/change")
+    def ingest_change(payload: ChangeEventIn) -> dict:
+        _store_change(payload)
+        return {"ok": True}
+
+    @app.get("/changes/recent")
+    def changes_recent(limit: int = 100) -> dict:
+        return {"changes": stats.signals.recent_change_events(limit)}
+
+    @app.post("/webhook/github")
+    async def github_webhook(request: Request) -> dict:
+        payload = await request.json()
+        if payload.get("zen") is not None:
+            return {"ok": True, "ping": True}
+        if payload.get("deleted"):
+            return {"ok": True, "ignored": "deleted_branch"}
+        events = github_push_to_change_events(payload, service_map)
+        for ev in events:
+            _store_change(ChangeEventIn(**ev))
+        return {"ok": True, "events": len(events)}
 
     @app.get("/stats/services")
     def service_stats(window_s: int = 300) -> dict:

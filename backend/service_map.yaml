@@ -1,0 +1,18 @@
+# Map repository paths to demo service entities for code.push correlation.
+mappings:
+  - pattern: "demo/services/inventory/**"
+    service: inventory
+  - pattern: "demo/services/catalog/**"
+    service: catalog
+  - pattern: "demo/services/checkout/**"
+    service: checkout
+  - pattern: "demo/services/edge/**"
+    service: edge
+  - pattern: "deploy/aidbg-demo/inventory.yaml"
+    service: inventory
+  - pattern: "deploy/aidbg-demo/catalog.yaml"
+    service: catalog
+  - pattern: "deploy/aidbg-demo/checkout.yaml"
+    service: checkout
+  - pattern: "deploy/aidbg-demo/edge.yaml"
+    service: edge

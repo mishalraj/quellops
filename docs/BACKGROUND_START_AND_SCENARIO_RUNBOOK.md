@@ -4,16 +4,22 @@ This runbook starts all required services in the background, then runs scenarios
 
 ## 1) One-time prerequisites
 
-- `kind`, `kubectl`, `helm`, `docker`, `python3`, `curl`
+- `kind`, `kubectl`, `docker`, `python3`, `curl`, `cloudflared` (optional, for tunnel script)
 - Run all commands from repo root:
 
 ```bash
 cd ~/infra-project-poc-mishalraj
 ```
 
-## 2) Start cluster + demo + collector + agent
+## 2) Start cluster + demo mesh + collector + agent
 
-Use the project bootstrap script (it is idempotent for existing kind clusters):
+**One command (recommended):**
+
+```bash
+scripts/start_stack_bg_and_check.sh
+```
+
+Or step by step:
 
 ```bash
 scripts/bootstrap_local.sh
@@ -21,9 +27,15 @@ scripts/bootstrap_local.sh
 
 This runs:
 - `scripts/setup_kind.sh`
-- `scripts/deploy_otel_demo.sh`
 - `scripts/deploy_collector.sh`
 - `scripts/deploy_agent.sh`
+- `scripts/deploy_aidbg_demo.sh` (4 Python services in `aidbg-demo`, replaces OpenTelemetry Demo)
+
+Port-forward the mesh entrypoint:
+
+```bash
+kubectl -n aidbg-demo port-forward svc/edge 8080:8080
+```
 
 ## 3) Start backend in background
 
@@ -137,24 +149,39 @@ This helps baseline/anomaly windows before scenario assertions:
 nohup env DURATION_SECONDS=180 RPS=8 scripts/run_load.sh > /tmp/aidbg-load.log 2>&1 &
 ```
 
-## 7) Run scenarios
+## 7) Run demo scenarios (POC — recommended)
 
-Run full suite:
+One scenario at a time (reset between runs avoids ranker pollution):
+
+```bash
+scripts/demo_reset.sh
+EDGE_URL=http://localhost:8080/ scripts/run_demo_scenario.sh 01_deploy_latency
+```
+
+| Scenario | What it does |
+|----------|----------------|
+| `01_deploy_latency` | Deploy `catalog` with 400ms latency fault |
+| `02_dependency_down` | Scale `catalog` to 0 replicas |
+| `03_traffic_spike` | Load only on `edge` (no deploy) |
+| `04_upstream_errors` | Deploy `catalog` with 50% error rate |
+
+Full suite (auto-reset between each):
+
+```bash
+scripts/run_all_demo_scenarios.sh
+```
+
+In-cluster load (no port-forward): `USE_IN_CLUSTER_LOAD=1 scripts/run_demo_scenario.sh 02_dependency_down`
+
+Artifacts: `artifacts/demo/<scenario>/`
+
+## 7b) Legacy otel-demo scenarios
 
 ```bash
 scripts/run_all_scenarios.sh
 ```
 
-Or run one scenario:
-
-```bash
-scripts/run_scenario.sh deploy_latency
-scripts/run_scenario.sh db_slowdown
-scripts/run_scenario.sh traffic_spike_false_positive
-scripts/run_scenario.sh dependency_down
-```
-
-Artifacts are saved under `artifacts/<scenario>/`.
+Requires `scripts/deploy_otel_demo.sh` (not used by default bootstrap).
 
 ## 8) Useful background operations
 

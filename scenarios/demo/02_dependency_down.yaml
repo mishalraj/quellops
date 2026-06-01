@@ -1,0 +1,16 @@
+name: 02_dependency_down
+description: Scale catalog to zero; dependency should rank first.
+namespace: aidbg-demo
+target:
+  deployment: catalog
+inject:
+  type: scale_to_zero
+wait_seconds: 30
+load:
+  duration_seconds: 60
+  rps: 8
+assert:
+  expect_top_type: dependency_unavailable
+  expect_entity: catalog
+  min_spans_received: 20
+  allow_top_k: 1

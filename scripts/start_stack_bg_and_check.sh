@@ -69,7 +69,6 @@ print_hr
 
 need_cmd kind
 need_cmd kubectl
-need_cmd helm
 need_cmd docker
 need_cmd curl
 need_cmd cloudflared
@@ -83,7 +82,6 @@ fi
 print_hr
 echo "1) Bootstrapping cluster/demo/collector/agent..."
 try_step "kind setup" scripts/setup_kind.sh
-try_step "otel demo deploy" scripts/deploy_otel_demo.sh
 try_step "collector deploy" scripts/deploy_collector.sh
 
 echo "Applying Linux-friendly collector endpoint: ${BACKEND_OTLP_ENDPOINT}"
@@ -95,6 +93,19 @@ else
 fi
 
 try_step "agent deploy" scripts/deploy_agent.sh
+
+if kubectl -n aidbg-agent get deploy aidbg-agent >/dev/null 2>&1; then
+  AGENT_HOST="${BACKEND_OTLP_ENDPOINT%:*}"
+  if kubectl -n aidbg-agent set env deploy/aidbg-agent \
+    "AIDBG_BACKEND_EVENT_URL=http://${AGENT_HOST}:8088/ingest/k8s" >/dev/null \
+    && kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=3m >/dev/null; then
+    pass "agent backend URL set to http://${AGENT_HOST}:8088/ingest/k8s"
+  else
+    fail "agent backend URL update"
+  fi
+fi
+
+try_step "aidbg-demo mesh deploy" scripts/deploy_aidbg_demo.sh
 
 print_hr
 echo "2) Starting backend in background..."

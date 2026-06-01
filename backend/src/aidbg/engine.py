@@ -33,7 +33,11 @@ def _pick_top_causes(candidates: list[dict[str, Any]], k: int = 3) -> list[dict[
     """Prefer a mix of cause types: at most two traffic_spike rows, then backfill by score."""
     if not candidates:
         return []
-    sorted_c = sorted(candidates, key=lambda x: x["score"], reverse=True)
+    sorted_c = sorted(
+        candidates,
+        key=lambda x: (x["score"], x.get("tie_breaker", 0.0)),
+        reverse=True,
+    )
     chosen: list[dict[str, Any]] = []
     chosen_idx: set[int] = set()
     traffic_rows = 0
@@ -67,6 +71,55 @@ class SpanPoint:
     service: str
     latency_ms: float
     is_error: bool
+    db_system: str = ""
+    db_statement: str = ""
+    is_db_span: bool = False
+
+
+@dataclass
+class ChangeEvent:
+    kind: str
+    at_unix_ms: int
+    entity: str
+    namespace: str | None
+    metadata: dict[str, Any]
+
+
+_CHANGE_KIND_WEIGHT: dict[str, float] = {
+    "db.migration.applied": 1.15,
+    "code.push": 1.05,
+    "config.changed": 0.95,
+    "db.slow_query_stat": 0.85,
+}
+
+
+def _time_decay_score(age_s: float, horizon_s: float, base: float = 1.0) -> float:
+    return max(0.1, base * (1.0 - (age_s / max(horizon_s, 1.0))))
+
+
+def _entity_match_bonus(entity: str, affected_entities: set[str], graph: dict[str, Any]) -> float:
+    if not entity or not affected_entities:
+        return 0.0
+    if entity in affected_entities:
+        return 0.25
+    edges = graph.get("edges") or []
+    for e in edges:
+        src = str(e.get("source") or "")
+        dst = str(e.get("target") or "")
+        if entity in affected_entities and (src == entity or dst == entity):
+            return 0.15
+        if src in affected_entities and dst == entity:
+            return 0.12
+        if dst in affected_entities and src == entity:
+            return 0.12
+    return 0.0
+
+
+def _normalize_db_statement(statement: str) -> str:
+    text = " ".join((statement or "").split())
+    if len(text) > 240:
+        return text[:237] + "..."
+    return text
 
 
 @dataclass
@@ -89,6 +142,18 @@ class SignalStore:
         self._spans: deque[SpanPoint] = deque()
         self._edges: deque[tuple[float, str, str, float, bool]] = deque()
         self._k8s_events: deque[K8sSignal] = deque()
+        self._change_events: deque[ChangeEvent] = deque()
+        self._db_slow_threshold_ms: float = 100.0
+        self._change_horizon_s: int = 900
+
+    def configure_correlation(
+        self, *, db_slow_threshold_ms: float | None = None, change_horizon_s: int | None = None
+    ) -> None:
+        with self._lock:
+            if db_slow_threshold_ms is not None:
+                self._db_slow_threshold_ms = db_slow_threshold_ms
+            if change_horizon_s is not None:
+                self._change_horizon_s = change_horizon_s
 
     def _trim(self, now_s: float, horizon_s: int = 3600) -> None:
         cutoff = now_s - horizon_s
@@ -99,6 +164,8 @@ class SignalStore:
         cutoff_ms = int(cutoff * 1000)
         while self._k8s_events and self._k8s_events[0].at_unix_ms < cutoff_ms:
             self._k8s_events.popleft()
+        while self._change_events and self._change_events[0].at_unix_ms < cutoff_ms:
+            self._change_events.popleft()
 
     def add_spans(
         self, span_points: list[SpanPoint], edges: list[tuple[float, str, str, float, bool]]
@@ -114,6 +181,17 @@ class SignalStore:
         with self._lock:
             self._k8s_events.append(event)
             self._trim(now_s)
+
+    def add_change_event(self, event: ChangeEvent) -> None:
+        now_s = time.time()
+        with self._lock:
+            self._change_events.append(event)
+            self._trim(now_s)
+
+    def recent_change_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            items = list(self._change_events)[-limit:]
+        return [asdict(i) for i in items]
 
     def recent_k8s_events(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
@@ -337,6 +415,118 @@ class SignalStore:
                 )
         return anomalies
 
+    def _db_span_groups(
+        self, current_window_s: int, baseline_window_s: int
+    ) -> tuple[dict[tuple[str, str], list[SpanPoint]], dict[tuple[str, str], list[SpanPoint]]]:
+        now_s = time.time()
+        cur_start = now_s - current_window_s
+        base_start = cur_start - baseline_window_s
+        current: dict[tuple[str, str], list[SpanPoint]] = defaultdict(list)
+        baseline: dict[tuple[str, str], list[SpanPoint]] = defaultdict(list)
+        with self._lock:
+            for p in self._spans:
+                if not p.is_db_span:
+                    continue
+                key = (p.service, _normalize_db_statement(p.db_statement or p.name))
+                if p.at_unix_s >= cur_start:
+                    current[key].append(p)
+                elif p.at_unix_s >= base_start:
+                    baseline[key].append(p)
+        return current, baseline
+
+    def db_slow_query_candidates(
+        self, current_window_s: int, baseline_window_s: int, affected_entities: set[str]
+    ) -> list[dict[str, Any]]:
+        current, baseline = self._db_span_groups(current_window_s, baseline_window_s)
+        threshold_ms = self._db_slow_threshold_ms
+        candidates: list[dict[str, Any]] = []
+        for (service, statement), cur_points in current.items():
+            if len(cur_points) < 5:
+                continue
+            cur_lats = [p.latency_ms for p in cur_points]
+            cur_p95 = _pct(cur_lats, 0.95)
+            base_points = baseline.get((service, statement), [])
+            base_p95 = max(_pct([p.latency_ms for p in base_points], 0.95), 1.0) if base_points else 1.0
+            ratio = cur_p95 / base_p95
+            if cur_p95 < threshold_ms and ratio < 1.5:
+                continue
+            score = min(1.34, 0.55 + min(1.0, ratio / 3.0) * 0.55)
+            if service in affected_entities:
+                score += 0.22
+            if cur_p95 >= threshold_ms * 3:
+                score += 0.08
+            candidates.append(
+                {
+                    "type": "db_slow_query",
+                    "entity": service,
+                    "score": score,
+                    "evidence": {
+                        "db_statement": statement,
+                        "db_system": cur_points[0].db_system or "unknown",
+                        "current_p95_ms": round(cur_p95, 2),
+                        "baseline_p95_ms": round(base_p95, 2),
+                        "latency_ratio": round(ratio, 2),
+                        "query_count": len(cur_points),
+                        "threshold_ms": threshold_ms,
+                    },
+                }
+            )
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        return candidates[:5]
+
+    def change_event_candidates(
+        self,
+        now_ms: int,
+        affected_entities: set[str],
+        graph: dict[str, Any],
+        kinds: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        horizon_s = float(self._change_horizon_s)
+        type_map = {
+            "code.push": "code_push",
+            "config.changed": "config_change",
+            "db.migration.applied": "db_migration",
+            "db.slow_query_stat": "db_slow_query_stat",
+        }
+        candidates: list[dict[str, Any]] = []
+        with self._lock:
+            events = list(self._change_events)
+        for ev in reversed(events):
+            kind = str(ev.kind)
+            if kinds and kind not in kinds:
+                continue
+            age_s = (now_ms - int(ev.at_unix_ms)) / 1000.0
+            if age_s > horizon_s:
+                continue
+            entity = str(ev.entity or "")
+            base = _CHANGE_KIND_WEIGHT.get(kind, 0.8)
+            score = _time_decay_score(age_s, horizon_s, base)
+            score += _entity_match_bonus(entity, affected_entities, graph)
+            cause_type = type_map.get(kind, kind.replace(".", "_"))
+            meta = ev.metadata or {}
+            evidence: dict[str, Any] = {"change_kind": kind, "age_s": round(age_s, 1), **meta}
+            if ev.namespace:
+                evidence["namespace"] = ev.namespace
+            if entity in affected_entities:
+                evidence["service_match"] = True
+            candidates.append(
+                {
+                    "type": cause_type,
+                    "entity": entity,
+                    "namespace": ev.namespace,
+                    "score": min(score, 1.35),
+                    "evidence": evidence,
+                }
+            )
+        _dedup: dict[tuple[str, str], dict[str, Any]] = {}
+        for c in candidates:
+            key = (str(c.get("type")), str(c.get("entity")))
+            if key not in _dedup or float(c["score"]) > float(_dedup[key]["score"]):
+                _dedup[key] = c
+        out = list(_dedup.values())
+        out.sort(key=lambda x: x["score"], reverse=True)
+        return out[:8]
+
     def build_incident(self, current_window_s: int, baseline_window_s: int) -> dict[str, Any]:
         anomalies = self.detect_anomalies(current_window_s, baseline_window_s)
         graph = self.graph_snapshot(current_window_s)
@@ -386,17 +576,22 @@ class SignalStore:
             if gr >= 80:
                 score += 0.12
                 evidence["trace_requests_in_window"] = gr
+            tie_breaker = -age_s
+            if name in affected_entities and len(affected_entities) > 1:
+                max_anom_rc = max(node_requests.get(e, 0) for e in affected_entities)
+                if 0 < gr < max_anom_rc:
+                    tie_breaker += 100.0
+                    evidence["lower_traffic_anomaly"] = True
             deploy_candidates.append(
                 {
                     "type": "recent_deploy",
                     "entity": name,
                     "namespace": ev.get("namespace"),
                     "score": min(score, 1.2),
+                    "tie_breaker": tie_breaker,
                     "evidence": evidence,
                 }
             )
-            if len(deploy_candidates) >= 5:
-                break
         _dedup_deploy: dict[tuple[str, str], dict[str, Any]] = {}
         for c in deploy_candidates:
             k = (str(c.get("entity") or ""), str(c.get("namespace") or ""))
@@ -479,7 +674,11 @@ class SignalStore:
                 }
             )
         candidates = deploy_candidates + dependency_down_candidates + traffic_candidates
-        candidates.sort(key=lambda x: x["score"], reverse=True)
+        db_candidates = self.db_slow_query_candidates(current_window_s, baseline_window_s, affected_entities)
+        change_candidates = self.change_event_candidates(now_ms, affected_entities, graph)
+        candidates.extend(db_candidates)
+        candidates.extend(change_candidates)
+        candidates.sort(key=lambda x: (x["score"], x.get("tie_breaker", 0.0)), reverse=True)
         if anomalies and not candidates:
             # Keep incident deterministic even when no strong candidate exists yet.
             candidates.append(
@@ -516,9 +715,17 @@ class SignalStore:
             e for e in graph["edges"] if e["source"] == service or e["target"] == service
         ]
         anomalies = self.detect_anomalies(current_window_s, baseline_window_s)
+        db_spans = self.db_slow_query_candidates(current_window_s, baseline_window_s, {service})
+        changes = self.change_event_candidates(
+            int(time.time() * 1000),
+            {service},
+            self.graph_snapshot(current_window_s),
+        )
         return {
             "service": service,
             "metrics": metric,
             "edges": relevant_edges,
             "anomalies": [a for a in anomalies if a.get("entity") == service],
+            "db_slow_queries": [c for c in db_spans if c.get("entity") == service],
+            "related_changes": [c for c in changes if c.get("entity") == service][:5],
         }

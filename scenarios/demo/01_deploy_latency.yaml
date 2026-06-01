@@ -1,0 +1,17 @@
+name: 01_deploy_latency
+description: Roll catalog with injected latency after deploy.
+namespace: aidbg-demo
+target:
+  deployment: catalog
+inject:
+  type: fault_latency_rollout
+  fault_latency_ms: 400
+wait_seconds: 45
+load:
+  duration_seconds: 90
+  rps: 10
+assert:
+  expect_top_type: recent_deploy
+  expect_entity: catalog
+  min_spans_received: 50
+  allow_top_k: 3

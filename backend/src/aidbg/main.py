@@ -15,6 +15,10 @@ def _split_host_port(bind: str) -> tuple[str, int]:
 def main() -> None:
     settings = load_settings()
     stats = StatsStore()
+    stats.signals.configure_correlation(
+        db_slow_threshold_ms=settings.db_slow_query_threshold_ms,
+        change_horizon_s=settings.change_horizon_s,
+    )
 
     # Start OTLP gRPC receiver
     otlp_server = serve_otlp_grpc(settings.otlp_grpc_bind, stats)

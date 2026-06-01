@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChangeEvent",
+  "type": "object",
+  "required": ["kind", "at_unix_ms", "entity"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "code.push | config.changed | db.migration.applied | db.slow_query_stat"
+    },
+    "at_unix_ms": { "type": "integer" },
+    "entity": { "type": "string" },
+    "namespace": { "type": "string" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": true
+}

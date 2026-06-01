@@ -78,7 +78,22 @@ These events power **deploy / scale / crashloop-style** cause candidates in the 
   - **Latency spike:** current p95 / baseline p95 ≥ **1.5**
   - **Error spike:** current error rate − baseline error rate ≥ **0.05**
 
-**API:** `GET /anomalies/latest`
+### 3.4 Change events (deploys, code, config, DB)
+
+Normalized events via **`POST /ingest/change`**:
+
+| `kind` | Source |
+|--------|--------|
+| `code.push` | GitHub webhook (`POST /webhook/github`) or scenario curl |
+| `config.changed` | `aidbg-agent` ConfigMap / Secret / HPA informers |
+| `db.migration.applied` | Demo migration hook (`services.common.migrate`) |
+| `db.slow_query_stat` | Optional `pg_stat_statements` CronJob scraper |
+
+**Correlator** (`engine.py`): time-decayed score + entity match against trace anomalies. New candidate types: `db_slow_query`, `code_push`, `config_change`, `db_migration`, `db_slow_query_stat`.
+
+**DB slow queries (trace-native):** OTLP spans with `db.system` / `db.statement`; inventory service uses OTel `psycopg2` instrumentation.
+
+**API:** `GET /changes/recent`
 
 ---
 

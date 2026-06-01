@@ -57,6 +57,20 @@ class TraceIngestServicer(TraceServiceServicer):
     def __init__(self, stats: StatsStore) -> None:
         self._stats = stats
 
+    @staticmethod
+    def _span_attributes(sp) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for attr in sp.attributes:
+            key = attr.key
+            val = attr.value
+            if val.string_value:
+                out[key] = val.string_value
+            elif val.int_value:
+                out[key] = str(val.int_value)
+            elif val.bool_value:
+                out[key] = str(val.bool_value).lower()
+        return out
+
     def Export(self, request, context) -> ExportTraceServiceResponse:  # type: ignore[override]
         # MVP keeps short-lived span metadata in memory for graph/anomaly analysis.
         span_count = 0
@@ -86,6 +100,12 @@ class TraceIngestServicer(TraceServiceServicer):
                     start_unix_s = start_ns / 1_000_000_000.0 if start_ns else time.time() - latency_ms / 1000.0
                     at_s = end_ns / 1_000_000_000.0 if end_ns else start_unix_s + latency_ms / 1000.0
                     span_name = (sp.name or "").strip() or service
+                    attrs = self._span_attributes(sp)
+                    db_system = attrs.get("db.system", "")
+                    db_statement = attrs.get("db.statement", "")
+                    is_db_span = bool(db_system) or span_name.upper().startswith(
+                        ("SELECT", "INSERT", "UPDATE", "DELETE")
+                    )
                     point = SpanPoint(
                         at_unix_s=at_s,
                         start_unix_s=start_unix_s,
@@ -96,6 +116,9 @@ class TraceIngestServicer(TraceServiceServicer):
                         service=service,
                         latency_ms=latency_ms,
                         is_error=is_error,
+                        db_system=db_system,
+                        db_statement=db_statement,
+                        is_db_span=is_db_span,
                     )
                     span_points.append(point)
                     span_to_service[(trace_id, span_id)] = service

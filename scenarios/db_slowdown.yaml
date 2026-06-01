@@ -1,17 +1,17 @@
 name: db_slowdown
 description: >
-  Synthetic "change" scenario: annotate + rollout restart of product-catalog.
-  Does not inject real DB latency; UI may show recent_deploy and/or traffic_spike,
-  not a DB-specific root cause until the ranker models data stores.
+  Real DB slowdown on aidbg-demo inventory: migration + pg_sleep + simulated code push.
+  Run with scripts/run_demo_scenario.sh 05_db_slowdown (aidbg-demo mesh).
 target:
-  namespace: otel-demo
-  deployment: product-catalog
+  namespace: aidbg-demo
+  deployment: inventory
 inject:
-  type: annotate_placeholder
+  type: db_slow_query_fault
+  fault_db_sleep_ms: 300
+  migration: drop_inventory_sku_index
 assert:
   expect_top_types:
-    - recent_deploy
-    - dependency_unavailable
-    - traffic_spike
-    - unknown_regression
+    - db_slow_query
+    - db_migration
+  expect_entity: inventory
   allow_top_k: 3

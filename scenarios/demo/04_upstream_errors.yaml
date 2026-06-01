@@ -1,0 +1,20 @@
+name: 04_upstream_errors
+description: Catalog returns errors; inventory/checkout path should show errors.
+namespace: aidbg-demo
+target:
+  deployment: catalog
+inject:
+  type: fault_error_rollout
+  fault_error_rate: 0.5
+wait_seconds: 45
+load:
+  duration_seconds: 90
+  rps: 10
+assert:
+  expect_top_type: recent_deploy
+  expect_entity: catalog
+  min_spans_received: 50
+  min_graph_error_rate: 0.05
+  graph_edge_source: inventory
+  graph_edge_target: catalog
+  allow_top_k: 3

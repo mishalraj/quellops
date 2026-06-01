@@ -2,6 +2,7 @@ package main
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -15,11 +16,19 @@ func mustMeta(obj any) *metav1.ObjectMeta {
 			Namespace:       m.GetNamespace(),
 			Labels:          m.GetLabels(),
 			ResourceVersion: m.GetResourceVersion(),
+			Annotations:     m.GetAnnotations(),
 		}
 	case *v1.Pod:
 		return &o.ObjectMeta
+	case *v1.ConfigMap:
+		return &o.ObjectMeta
+	case *v1.Secret:
+		return &o.ObjectMeta
+	case *appsv1.Deployment:
+		return &o.ObjectMeta
+	case *autoscalingv2.HorizontalPodAutoscaler:
+		return &o.ObjectMeta
 	default:
-		// best effort; avoid panics in the agent
 		return &metav1.ObjectMeta{}
 	}
 }
