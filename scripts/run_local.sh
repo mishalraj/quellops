@@ -103,9 +103,9 @@ apply_collector_and_agent_hosts() {
   kubectl -n aidbg-otel rollout status deploy/aidbg-otel-collector --timeout=5m >/dev/null
 
   if kubectl -n aidbg-agent get deploy aidbg-agent >/dev/null 2>&1; then
-    echo "Configuring agent K8s events -> http://${host}:8088/ingest/k8s"
+    echo "Configuring Kubernetes agent -> http://${host}:8088"
     kubectl -n aidbg-agent set env deploy/aidbg-agent \
-      "AIDBG_BACKEND_EVENT_URL=http://${host}:8088/ingest/k8s" >/dev/null
+      "AIDBG_BACKEND_URL=http://${host}:8088" >/dev/null
     kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=3m >/dev/null
   fi
 }

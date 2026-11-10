@@ -97,9 +97,9 @@ try_step "agent deploy" scripts/deploy_agent.sh
 if kubectl -n aidbg-agent get deploy aidbg-agent >/dev/null 2>&1; then
   AGENT_HOST="${BACKEND_OTLP_ENDPOINT%:*}"
   if kubectl -n aidbg-agent set env deploy/aidbg-agent \
-    "AIDBG_BACKEND_EVENT_URL=http://${AGENT_HOST}:8088/ingest/k8s" >/dev/null \
+    "AIDBG_BACKEND_URL=http://${AGENT_HOST}:8088" >/dev/null \
     && kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=3m >/dev/null; then
-    pass "agent backend URL set to http://${AGENT_HOST}:8088/ingest/k8s"
+    pass "agent backend URL set to http://${AGENT_HOST}:8088"
   else
     fail "agent backend URL update"
   fi
@@ -209,4 +209,3 @@ if [[ "$FAIL_COUNT" -gt 0 ]]; then
 fi
 
 exit 0
-

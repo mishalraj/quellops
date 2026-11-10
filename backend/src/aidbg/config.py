@@ -23,6 +23,8 @@ class Settings:
     )
     # Set this to use shared PostgreSQL storage instead of the local SQLite file.
     control_database_url: str = os.getenv("AIDBG_CONTROL_DATABASE_URL", "")
+    # Shared bootstrap credential used by outbound Kubernetes agents.
+    k8s_agent_token: str = os.getenv("AIDBG_K8S_AGENT_TOKEN", "")
     # Analysis windows in seconds (short windows for local MVP).
     current_window_s: int = int(os.getenv("AIDBG_CURRENT_WINDOW_S", "300"))
     baseline_window_s: int = int(os.getenv("AIDBG_BASELINE_WINDOW_S", "900"))

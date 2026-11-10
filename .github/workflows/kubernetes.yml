@@ -1,0 +1,43 @@
+name: Kubernetes module
+
+on:
+  pull_request:
+    paths: ["agent/**", "backend/src/aidbg/k8s_*.py", "tests/test_k8s_*.py", "deploy/agent/**"]
+  push:
+    branches: [main]
+    paths: ["agent/**", "backend/src/aidbg/k8s_*.py", "tests/test_k8s_*.py", "deploy/agent/**"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test-agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - run: go test ./...
+
+  publish-agent:
+    if: github.event_name == 'push'
+    needs: test-agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: agent
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/aidbg-kubernetes-agent:latest

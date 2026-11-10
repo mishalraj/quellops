@@ -54,7 +54,7 @@ modules continue to work without it.
 | --- | --- | --- |
 | Central logic | Combines evidence, ranks causes, and suggests actions | Python / FastAPI |
 | Logs | Fetches bounded logs, normalizes records, redacts configured values, and controls retrieval cost | Go / gRPC |
-| Kubernetes agent | Watches workloads, events, deployments, and configuration changes | Go |
+| Kubernetes | Discovers clusters and watches an administrator-approved namespace scope | Go agent / Python control API |
 | Tracing | Receives OTLP traces and builds service relationships | Python |
 | Database | Collects database health and slow-query evidence | Initial PostgreSQL support |
 | Changes | Records deployments, code pushes, migrations, and configuration changes | Python |
@@ -83,5 +83,14 @@ Supported connectors include Loki, Splunk, Elasticsearch, OpenSearch, Graylog,
 Datadog, CloudWatch Logs, Google Cloud Logging, and Azure Log Analytics.
 
 Detailed logs configuration: [docs/LOG_CONNECTORS.md](docs/LOG_CONNECTORS.md)
+
+## Kubernetes module
+
+Each cluster runs a read-only Go agent that connects outward to aidbg. It discovers
+namespaces and workloads, but monitoring stays off until an administrator chooses the
+allowed namespaces in `/ui/kubernetes.html`. Events and cluster state use the same
+SQLite or PostgreSQL control storage as the logs module.
+
+Kubernetes setup: [docs/KUBERNETES_MODULE.md](docs/KUBERNETES_MODULE.md)
 
 Engineering overview: [docs/ENGINEERING_OVERVIEW.md](docs/ENGINEERING_OVERVIEW.md)

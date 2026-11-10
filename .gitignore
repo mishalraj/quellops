@@ -5,4 +5,5 @@ __pycache__/
 modules/logs/config.yaml
 modules/logs/provider.env
 modules/logs/aidbg-logs
+agent/aidbg-agent
 backend/data/

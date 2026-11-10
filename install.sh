@@ -83,10 +83,15 @@ if [[ ! -f .env ]]; then
 AIDBG_LOG_SERVICE_TOKEN=$(openssl rand -hex 32)
 AIDBG_LOG_API_TOKEN=$(openssl rand -hex 32)
 AIDBG_ADMIN_API_TOKEN=$(openssl rand -hex 24)
+AIDBG_K8S_AGENT_TOKEN=$(openssl rand -hex 32)
 AIDBG_MASTER_KEY=$(openssl rand -base64 32 | tr -d '\n')
 AIDBG_POSTGRES_PASSWORD=$(openssl rand -hex 32)
 EOF
   chmod 600 .env
+fi
+
+if ! grep -q '^AIDBG_K8S_AGENT_TOKEN=' .env; then
+  printf '\nAIDBG_K8S_AGENT_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 fi
 
 if ! grep -q '^AIDBG_POSTGRES_PASSWORD=' .env; then
@@ -121,7 +126,9 @@ curl --fail --silent http://127.0.0.1:8088/healthz >/dev/null || {
 }
 
 ADMIN_TOKEN="$(sed -n 's/^AIDBG_ADMIN_API_TOKEN=//p' .env)"
-echo "aidbg logs is ready: http://127.0.0.1:8088/ui/logs.html"
+echo "aidbg is ready: http://127.0.0.1:8088/ui/"
+echo "Logs setup: http://127.0.0.1:8088/ui/logs.html"
+echo "Kubernetes setup: http://127.0.0.1:8088/ui/kubernetes.html"
 echo "Administrator token: $ADMIN_TOKEN"
 echo "Control storage: $STORAGE"
 

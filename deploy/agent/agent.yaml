@@ -15,10 +15,13 @@ metadata:
   name: aidbg-agent-readonly
 rules:
   - apiGroups: [""]
-    resources: ["pods", "events", "configmaps", "secrets"]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods", "events"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
@@ -55,17 +58,28 @@ spec:
       serviceAccountName: aidbg-agent
       containers:
         - name: agent
-          image: ghcr.io/placeholder/aidbg-agent:dev
+          image: ghcr.io/mishalraj/aidbg-kubernetes-agent:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: AIDBG_BACKEND_EVENT_URL
-              value: "http://host.docker.internal:8088/ingest/k8s"
-            - name: AIDBG_BACKEND_CHANGE_URL
-              value: "http://host.docker.internal:8088/ingest/change"
-            - name: AIDBG_CLUSTER
+            - name: AIDBG_BACKEND_URL
+              value: "http://host.docker.internal:8088"
+            - name: AIDBG_CLUSTER_NAME
               value: ""
-          args:
-            - "-backend-url=$(AIDBG_BACKEND_EVENT_URL)"
-            - "-change-url=$(AIDBG_BACKEND_CHANGE_URL)"
-            - "-cluster=$(AIDBG_CLUSTER)"
-
+            - name: AIDBG_K8S_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aidbg-agent-credentials
+                  key: token
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]

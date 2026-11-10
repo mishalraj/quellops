@@ -3,9 +3,10 @@ from __future__ import annotations
 import time
 import base64
 import json
+import hmac
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -17,6 +18,7 @@ from .explain_llm import explain_incident
 from .ingest_otlp import StatsStore
 from .log_api import router as log_router
 from .log_control import router as log_control_router
+from .k8s_control import router as k8s_control_router
 
 
 class K8sEventIn(BaseModel):
@@ -60,6 +62,15 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
             settings.control_database_url,
         )
     )
+    app.include_router(
+        k8s_control_router(
+            settings.k8s_agent_token,
+            settings.log_admin_token,
+            settings.control_db_path,
+            stats.signals,
+            settings.control_database_url,
+        )
+    )
     service_map = load_service_map(Path(settings.service_map_path))
 
     def _store_change(payload: ChangeEventIn) -> None:
@@ -98,7 +109,15 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         }
 
     @app.post("/ingest/k8s")
-    def ingest_k8s(payload: K8sEventIn) -> dict:
+    def ingest_k8s(
+        payload: K8sEventIn, authorization: str | None = Header(default=None)
+    ) -> dict:
+        # Compatibility endpoint for older agents. Production agents use the
+        # durable batched API, but this path must not permit signal injection.
+        if settings.k8s_agent_token:
+            expected = "Bearer " + settings.k8s_agent_token
+            if not authorization or not hmac.compare_digest(authorization, expected):
+                raise HTTPException(401, "Kubernetes agent authentication required")
         at_unix_ms = payload.at_unix_ms or int(time.time() * 1000)
         stats.signals.add_k8s_event(
             K8sSignal(

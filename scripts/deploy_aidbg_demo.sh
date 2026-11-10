@@ -37,8 +37,7 @@ kubectl -n aidbg-demo rollout status deploy/edge --timeout=5m
 # Linux VM: agent must reach host backend (same as collector OTLP endpoint host).
 if kubectl -n aidbg-agent get deploy aidbg-agent >/dev/null 2>&1; then
   kubectl -n aidbg-agent set env deploy/aidbg-agent \
-    "AIDBG_BACKEND_EVENT_URL=http://${BACKEND_HOST}:8088/ingest/k8s" \
-    "AIDBG_BACKEND_CHANGE_URL=http://${BACKEND_HOST}:8088/ingest/change" >/dev/null || true
+    "AIDBG_BACKEND_URL=http://${BACKEND_HOST}:8088" >/dev/null || true
   kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=3m >/dev/null || true
 fi
 
