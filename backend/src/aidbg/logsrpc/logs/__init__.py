@@ -1,0 +1,1 @@
+"""Logs service protobuf namespace."""

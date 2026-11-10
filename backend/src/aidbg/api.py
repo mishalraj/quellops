@@ -15,6 +15,8 @@ from .config import Settings
 from .engine import ChangeEvent, K8sSignal
 from .explain_llm import explain_incident
 from .ingest_otlp import StatsStore
+from .log_api import router as log_router
+from .log_control import router as log_control_router
 
 
 class K8sEventIn(BaseModel):
@@ -40,6 +42,24 @@ class ChangeEventIn(BaseModel):
 
 def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     app = FastAPI(title="aidbg-backend", version="0.1.0")
+    app.include_router(
+        log_router(
+            settings.log_service_grpc_target,
+            settings.log_service_token,
+            settings.log_api_token,
+        )
+    )
+    app.include_router(
+        log_control_router(
+            settings.log_service_grpc_target,
+            settings.log_service_token,
+            settings.log_admin_token,
+            settings.log_master_key,
+            settings.control_db_path,
+            stats.signals,
+            settings.control_database_url,
+        )
+    )
     service_map = load_service_map(Path(settings.service_map_path))
 
     def _store_change(payload: ChangeEventIn) -> None:
@@ -217,4 +237,3 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         }
 
     return app
-

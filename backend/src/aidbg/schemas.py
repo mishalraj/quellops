@@ -45,3 +45,4 @@ class Incident:
     anomalies: list[dict[str, Any]]
     top_causes: list[dict[str, Any]]
     graph_snapshot: dict[str, Any]
+    log_evidence: list[dict[str, Any]]

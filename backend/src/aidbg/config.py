@@ -11,6 +11,18 @@ class Settings:
     otlp_grpc_bind: str = os.getenv("AIDBG_OTLP_GRPC_BIND", "0.0.0.0:4317")
     # Minimal HTTP API bind (health + basic stats)
     http_bind: str = os.getenv("AIDBG_HTTP_BIND", "0.0.0.0:8088")
+    # Standalone Go logs tool. The backend contains no provider-specific code.
+    log_service_grpc_target: str = os.getenv("AIDBG_LOG_SERVICE_GRPC", "")
+    log_service_token: str = os.getenv("AIDBG_LOG_SERVICE_TOKEN", "")
+    log_api_token: str = os.getenv("AIDBG_LOG_API_TOKEN", "")
+    log_admin_token: str = os.getenv("AIDBG_ADMIN_API_TOKEN", "")
+    log_master_key: str = os.getenv("AIDBG_MASTER_KEY", "")
+    control_db_path: str = os.getenv(
+        "AIDBG_CONTROL_DB",
+        str(Path(__file__).resolve().parents[2] / "data" / "aidbg-control.db"),
+    )
+    # Set this to use shared PostgreSQL storage instead of the local SQLite file.
+    control_database_url: str = os.getenv("AIDBG_CONTROL_DATABASE_URL", "")
     # Analysis windows in seconds (short windows for local MVP).
     current_window_s: int = int(os.getenv("AIDBG_CURRENT_WINDOW_S", "300"))
     baseline_window_s: int = int(os.getenv("AIDBG_BASELINE_WINDOW_S", "900"))
@@ -29,4 +41,3 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings()
-

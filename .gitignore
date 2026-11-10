@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.pyc
+.env
+modules/logs/config.yaml
+modules/logs/provider.env
+modules/logs/aidbg-logs
+backend/data/

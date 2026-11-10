@@ -589,6 +589,7 @@
       <div>
         <div class="nav-label">API</div>
         <nav class="nav">
+          <a href="/ui/logs.html">Configure log sources</a>
           <a href="/docs" target="_blank" rel="noopener">OpenAPI docs</a>
           <a href="/incident/latest" target="_blank" rel="noopener">GET /incident/latest</a>
           <a href="/graph/snapshot" target="_blank" rel="noopener">GET /graph/snapshot</a>
@@ -678,6 +679,16 @@
         </div>
         <div class="panel">
           <div class="causes-grid" id="causesGrid"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <h2>Log evidence</h2>
+          <span>Watcher signals and bounded investigation samples</span>
+        </div>
+        <div class="panel">
+          <div class="anom-list" id="logEvidence"></div>
         </div>
       </div>
 
@@ -999,6 +1010,27 @@
           "<div class='anom-card'><span class='ic'>⚠</span><div><strong>" + escapeHtml(a.kind || "") + "</strong> · " +
           escapeHtml(a.entity || "—") + "<br/><span style='color:var(--muted);font-size:0.78rem'>" + escapeHtml(mag) + "</span></div></div>"
         );
+      }).join("");
+    }
+
+    function renderLogEvidence(list) {
+      const el = $("logEvidence");
+      if (!list.length) {
+        el.innerHTML = "<div class='empty-state'>No suspicious log activity has been detected.</div>";
+        return;
+      }
+      el.innerHTML = list.slice().reverse().map((signal) => {
+        const reasons = (signal.reasons || []).join(", ");
+        const title = signal.service || signal.source || "log source";
+        const detail = signal.error || reasons || signal.kind || "watcher event";
+        const samples = (signal.samples || []).slice(0, 3).map((sample) =>
+          "<div class='ev'>" + escapeHtml(sample.message || "") + "</div>"
+        ).join("");
+        return "<div class='cause-card' style='width:100%'>" +
+          "<div class='tag'>" + escapeHtml(signal.provider || "logs") + " · " + escapeHtml(signal.source || "") + "</div>" +
+          "<div class='entity'>" + escapeHtml(title) + "</div>" +
+          "<div class='ev'>" + escapeHtml(detail) + " · " + Number(signal.records || 0) + " record(s)</div>" +
+          samples + "</div>";
       }).join("");
     }
 
@@ -1364,6 +1396,7 @@
         renderTraceFocus(incident, graph, anom.anomalies || []);
         renderGraph(graph);
         renderCauses(incident.top_causes || []);
+        renderLogEvidence(incident.log_evidence || []);
         renderAnomalies(anom.anomalies || []);
         renderInsight(explain, incident);
 

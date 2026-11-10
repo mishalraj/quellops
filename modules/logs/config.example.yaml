@@ -1,0 +1,89 @@
+# Copy this file to config.yaml and keep only the sources you use.
+# Queries are trusted administrator configuration, never LLM or end-user input.
+# Credentials are names of environment variables and are read only when a source is used.
+sources:
+  local_loki:
+    provider: loki
+    url: http://localhost:3100
+    query: '{service_name="checkout", environment="production"}'
+    # token_env: LOKI_TOKEN
+    # headers_env: {X-Scope-OrgID: LOKI_TENANT}
+    # redact_patterns: ['(?i)password=[^ ]+', '(?i)authorization: bearer [^ ]+']
+    initial_window_s: 60
+    initial_records: 50
+    target_records: 100
+    max_window_s: 900
+    max_scope_s: 3600
+    max_records: 500
+    growth_factor: 2
+    min_split_window_s: 5
+    max_bytes: 2097152
+    timeout_s: 15
+    max_pages: 5
+    max_cycle_fetches: 20
+    max_cycle_requests: 50
+    max_cycle_bytes: 16777216
+    max_cycle_records: 5000
+    max_cycle_seconds: 60
+
+  splunk_prod:
+    provider: splunk
+    url: https://splunk.example.com:8089
+    token_env: SPLUNK_TOKEN
+    query: 'search index=application service=checkout | fields _time _raw _cd host source'
+
+  elastic_prod:
+    provider: elasticsearch
+    url: https://elastic.example.com:9200
+    headers_env: {Authorization: ELASTIC_AUTHORIZATION}
+    index: logs-*
+    timestamp_field: '@timestamp'
+    query: 'service.name:checkout AND service.environment:production'
+
+  opensearch_prod:
+    provider: opensearch
+    url: https://opensearch.example.com:9200
+    username_env: OPENSEARCH_USERNAME
+    password_env: OPENSEARCH_PASSWORD
+    index: logs-*
+    query: 'service.name:checkout'
+    # For an AWS-managed domain, remove username/password and enable:
+    # aws_sigv4: true
+    # region: us-east-1
+    # aws_service: es # Use aoss for OpenSearch Serverless
+
+  graylog_prod:
+    provider: graylog
+    url: https://graylog.example.com/api
+    username_env: GRAYLOG_TOKEN
+    password_env: GRAYLOG_PASSWORD
+    query: 'application:checkout AND environment:production'
+
+  datadog_prod:
+    provider: datadog
+    url: https://api.datadoghq.com
+    api_key_env: DD_API_KEY
+    app_key_env: DD_APP_KEY
+    query: 'service:checkout env:production'
+
+  aws_prod:
+    provider: cloudwatch
+    region: us-east-1
+    log_group: /production/checkout
+    query: '"ERROR"'
+
+  gcp_prod:
+    provider: gcp
+    url: https://logging.googleapis.com
+    resource_names: [projects/YOUR_PROJECT]
+    query: 'resource.type="gce_instance" AND labels.application="checkout"'
+    # token_env: GCP_ACCESS_TOKEN
+
+  azure_prod:
+    provider: azure
+    url: https://api.loganalytics.azure.com
+    workspace_id: YOUR_WORKSPACE_UUID
+    query: 'ContainerLogV2 | where ContainerName == "checkout" | project TimeGenerated, LogMessage'
+    timestamp_field: TimeGenerated
+    message_field: LogMessage
+    # token_env: AZURE_LOGS_TOKEN

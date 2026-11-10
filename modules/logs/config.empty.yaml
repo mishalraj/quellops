@@ -1,0 +1,2 @@
+# Sources configured through the central UI are applied over gRPC after startup.
+sources: {}

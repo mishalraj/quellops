@@ -1,9 +1,31 @@
 services:
+  aidbg-logs:
+    profiles: ["logs"]
+    build:
+      context: .
+      dockerfile: modules/logs/Dockerfile
+    container_name: aidbg-logs
+    restart: unless-stopped
+    expose:
+      - "8091"
+      - "8092"
+    environment:
+      AIDBG_LOG_CONFIG: "/etc/aidbg/logs.yaml"
+      AIDBG_LOG_GRPC_BIND: "0.0.0.0:8091"
+      AIDBG_LOG_HEALTH_BIND: "0.0.0.0:8092"
+      AIDBG_LOG_SERVICE_TOKEN: "${AIDBG_LOG_SERVICE_TOKEN:-}"
+    env_file:
+      - path: "${AIDBG_LOG_ENV_FILE:-./modules/logs/provider.env}"
+        required: false
+    volumes:
+      - "${AIDBG_LOG_CONFIG_FILE:-./modules/logs/config.empty.yaml}:/etc/aidbg/logs.yaml:ro"
+
   aidbg-backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: aidbg-backend
+    restart: unless-stopped
     ports:
       - "4317:4317"
       - "8088:8088"
@@ -12,8 +34,38 @@ services:
       AIDBG_HTTP_BIND: "0.0.0.0:8088"
       AIDBG_CURRENT_WINDOW_S: "300"
       AIDBG_BASELINE_WINDOW_S: "900"
+      AIDBG_LOG_SERVICE_GRPC: "${AIDBG_LOG_SERVICE_GRPC:-aidbg-logs:8091}"
+      AIDBG_LOG_SERVICE_TOKEN: "${AIDBG_LOG_SERVICE_TOKEN:-}"
+      AIDBG_LOG_API_TOKEN: "${AIDBG_LOG_API_TOKEN:-}"
+      AIDBG_ADMIN_API_TOKEN: "${AIDBG_ADMIN_API_TOKEN:-}"
+      AIDBG_MASTER_KEY: "${AIDBG_MASTER_KEY:-}"
+      AIDBG_CONTROL_DB: "/data/aidbg-control.db"
+      AIDBG_CONTROL_DATABASE_URL: "${AIDBG_CONTROL_DATABASE_URL:-}"
       # Optional: enable /explain/latest + UI insights (see docs/LLM_SETUP.md)
-      AZURE_OPENAI_ENDPOINT: "https://YOUR_RESOURCE.openai.azure.com/"
-      AZURE_OPENAI_API_KEY: "YOUR_KEY"
-      AZURE_OPENAI_DEPLOYMENT: "YOUR_DEPLOYMENT"
-      AZURE_OPENAI_API_VERSION: "2024-12-01-preview"
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT:-}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY:-}"
+      AZURE_OPENAI_DEPLOYMENT: "${AZURE_OPENAI_DEPLOYMENT:-}"
+      AZURE_OPENAI_API_VERSION: "${AZURE_OPENAI_API_VERSION:-2024-12-01-preview}"
+    volumes:
+      - aidbg-control:/data
+
+  aidbg-postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    container_name: aidbg-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aidbg
+      POSTGRES_USER: aidbg
+      POSTGRES_PASSWORD: "${AIDBG_POSTGRES_PASSWORD:-aidbg-local-postgres}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aidbg -d aidbg"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - aidbg-postgres:/var/lib/postgresql/data
+
+volumes:
+  aidbg-control:
+  aidbg-postgres:

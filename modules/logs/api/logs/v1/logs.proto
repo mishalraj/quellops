@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package aidbg.logs.v1;
+
+option go_package = "github.com/mishalraj/infra-project-poc-mishalraj/modules/logs/gen/logsv1;logsv1";
+
+import "google/protobuf/struct.proto";
+
+service LogsService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
+  rpc Fetch(FetchRequest) returns (FetchResponse);
+  rpc Investigate(InvestigateRequest) returns (InvestigationResponse);
+  rpc FetchComplete(FetchCompleteRequest) returns (InvestigationResponse);
+  rpc ApplySource(ApplySourceRequest) returns (ApplySourceResponse);
+  rpc DeleteSource(DeleteSourceRequest) returns (DeleteSourceResponse);
+  rpc TestSource(TestSourceRequest) returns (TestSourceResponse);
+  // Struct keeps discovery options extensible across providers. The response
+  // contains source, provider, scopes, warnings, and the request count.
+  rpc Discover(google.protobuf.Struct) returns (google.protobuf.Struct);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+  string version = 2;
+}
+
+message ListSourcesRequest {}
+
+message Source {
+  string name = 1;
+  string provider = 2;
+}
+
+message ApplySourceRequest {
+  string name = 1;
+  string provider = 2;
+  google.protobuf.Struct config = 3;
+  map<string, string> credentials = 4;
+}
+
+message ApplySourceResponse {
+  Source source = 1;
+}
+
+message DeleteSourceRequest {
+  string name = 1;
+}
+
+message DeleteSourceResponse {
+  bool deleted = 1;
+}
+
+message TestSourceRequest {
+  string name = 1;
+}
+
+message TestSourceResponse {
+  bool ok = 1;
+  string provider = 2;
+  uint32 records = 3;
+  uint32 requests = 4;
+  uint64 bytes_received = 5;
+}
+
+message ListSourcesResponse {
+  repeated Source sources = 1;
+}
+
+message FetchRequest {
+  string source = 1;
+  double start_unix_s = 2;
+  double end_unix_s = 3;
+  uint32 limit = 4;
+}
+
+message InvestigateRequest {
+  string source = 1;
+  double start_unix_s = 2;
+  double end_unix_s = 3;
+  uint32 target_records = 4;
+  string focus = 5;
+}
+
+message FetchCompleteRequest {
+  string source = 1;
+  double start_unix_s = 2;
+  double end_unix_s = 3;
+}
+
+message LogRecord {
+  string timestamp = 1;
+  string message = 2;
+  string source = 3;
+  string id = 4;
+  google.protobuf.Struct attributes = 5;
+}
+
+message FetchResponse {
+  string source = 1;
+  string provider = 2;
+  string start = 3;
+  string end = 4;
+  repeated LogRecord records = 5;
+  bool truncated = 6;
+  repeated string warnings = 7;
+  uint32 requests = 8;
+  uint64 bytes_received = 9;
+}
+
+message Attempt {
+  string start = 1;
+  string end = 2;
+  uint32 limit = 3;
+  uint32 records = 4;
+  bool truncated = 5;
+  repeated string warnings = 6;
+}
+
+message Usage {
+  uint32 fetches = 1;
+  uint32 backend_requests = 2;
+  uint64 bytes_received = 3;
+  uint32 records = 4;
+}
+
+message InvestigationResponse {
+  string source = 1;
+  string provider = 2;
+  string scope_start = 3;
+  string scope_end = 4;
+  repeated LogRecord records = 5;
+  repeated Attempt attempts = 6;
+  Usage usage = 7;
+  string strategy = 8;
+  string requested_start = 9;
+  uint32 target_records = 10;
+  bool target_reached = 11;
+  bool coverage_complete = 12;
+  bool backend_partial = 13;
+  string stop_reason = 14;
+  repeated string warnings = 15;
+}
