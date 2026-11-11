@@ -8,11 +8,11 @@ mappings:
     service: checkout
   - pattern: "demo/services/edge/**"
     service: edge
-  - pattern: "deploy/aidbg-demo/inventory.yaml"
+  - pattern: "deploy/quellops-demo/inventory.yaml"
     service: inventory
-  - pattern: "deploy/aidbg-demo/catalog.yaml"
+  - pattern: "deploy/quellops-demo/catalog.yaml"
     service: catalog
-  - pattern: "deploy/aidbg-demo/checkout.yaml"
+  - pattern: "deploy/quellops-demo/checkout.yaml"
     service: checkout
-  - pattern: "deploy/aidbg-demo/edge.yaml"
+  - pattern: "deploy/quellops-demo/edge.yaml"
     service: edge

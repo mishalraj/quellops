@@ -16,6 +16,7 @@ from .config import Settings
 from .engine import ChangeEvent, K8sSignal
 from .explain_llm import explain_incident
 from .ingest_otlp import StatsStore
+from .incident_store import create_incident_store, is_meaningful_incident
 from .log_api import router as log_router
 from .log_control import router as log_control_router
 from .k8s_control import router as k8s_control_router
@@ -43,7 +44,12 @@ class ChangeEventIn(BaseModel):
 
 
 def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
-    app = FastAPI(title="aidbg-backend", version="0.1.0")
+    app = FastAPI(title="QuellOps", version="0.1.0")
+    incident_store = create_incident_store(
+        settings.control_db_path,
+        settings.control_database_url,
+        settings.incident_retention,
+    )
     app.include_router(
         log_router(
             settings.log_service_grpc_target,
@@ -64,14 +70,59 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     )
     app.include_router(
         k8s_control_router(
-            settings.k8s_agent_token,
-            settings.log_admin_token,
-            settings.control_db_path,
-            stats.signals,
-            settings.control_database_url,
+            agent_token=settings.k8s_agent_token,
+            admin_token=settings.log_admin_token,
+            db_path=settings.control_db_path,
+            signals=stats.signals,
+            database_url=settings.control_database_url,
+            event_transport=settings.event_transport,
+            kafka_bootstrap_servers=settings.kafka_bootstrap_servers,
+            kafka_topic=settings.kafka_k8s_topic,
+            kafka_config={
+                key: value
+                for key, value in {
+                    "security.protocol": settings.kafka_security_protocol,
+                    "sasl.mechanism": settings.kafka_sasl_mechanism,
+                    "sasl.username": settings.kafka_sasl_username,
+                    "sasl.password": settings.kafka_sasl_password,
+                    "ssl.ca.location": settings.kafka_ssl_ca_location,
+                }.items()
+                if value
+            },
+            retention_events=settings.k8s_retention_events,
+            kafka_consumer_group=settings.kafka_consumer_group,
+            run_kafka_consumer=settings.kafka_consumer_embedded,
+            incident_store=incident_store,
+            incident_builder=lambda: stats.signals.build_incident(
+                settings.current_window_s, settings.baseline_window_s
+            ),
         )
     )
     service_map = load_service_map(Path(settings.service_map_path))
+    incident_store_ready = False
+
+    def durable_incident(cur: int, base: int) -> dict:
+        nonlocal incident_store_ready
+        if not incident_store_ready:
+            incident_store.initialize()
+            incident_store_ready = True
+        current = stats.signals.build_incident(cur, base)
+        if is_meaningful_incident(current):
+            generated = int(current.get("generated_at_unix_ms") or time.time() * 1000)
+            return incident_store.save(
+                f"snapshot:{generated}",
+                current,
+                trigger_type="api_snapshot",
+                trigger_id=str(generated),
+            )
+        return incident_store.latest() or current
+
+    def authorize_admin(authorization: str | None) -> None:
+        expected = "Bearer " + settings.log_admin_token
+        if not settings.log_admin_token:
+            raise HTTPException(503, "Administrator API is not configured")
+        if not authorization or not hmac.compare_digest(authorization, expected):
+            raise HTTPException(401, "Administrator authentication required")
 
     def _store_change(payload: ChangeEventIn) -> None:
         at_unix_ms = payload.at_unix_ms or int(time.time() * 1000)
@@ -186,7 +237,19 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     ) -> dict:
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
-        return stats.signals.build_incident(cur, base)
+        return durable_incident(cur, base)
+
+    @app.get("/admin/incidents/history")
+    def incident_history(
+        limit: int = 100,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        nonlocal incident_store_ready
+        authorize_admin(authorization)
+        if not incident_store_ready:
+            incident_store.initialize()
+            incident_store_ready = True
+        return {"incidents": incident_store.list(limit)}
 
     @app.get("/explain/latest")
     def explain_latest(
@@ -195,7 +258,7 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     ) -> dict:
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
-        incident = stats.signals.build_incident(cur, base)
+        incident = durable_incident(cur, base)
         return explain_incident(incident, settings)
 
     @app.get("/k8s/events")
@@ -239,7 +302,7 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
             patch_ops.extend(
                 [
                     {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_SERVICE_NAME", "value": metadata.get("name", "unknown")}},
-                    {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_EXPORTER_OTLP_ENDPOINT", "value": "http://aidbg-otel-collector.aidbg-otel:4318"}},
+                    {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_EXPORTER_OTLP_ENDPOINT", "value": "http://quellops-otel-collector.quellops-otel:4318"}},
                     {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_TRACES_EXPORTER", "value": "otlp"}},
                 ]
             )

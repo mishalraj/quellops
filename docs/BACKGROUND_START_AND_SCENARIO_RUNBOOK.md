@@ -29,12 +29,12 @@ This runs:
 - `scripts/setup_kind.sh`
 - `scripts/deploy_collector.sh`
 - `scripts/deploy_agent.sh`
-- `scripts/deploy_aidbg_demo.sh` (4 Python services in `aidbg-demo`, replaces OpenTelemetry Demo)
+- `scripts/deploy_quellops_demo.sh` (4 Python services in `quellops-demo`, replaces OpenTelemetry Demo)
 
 Port-forward the mesh entrypoint:
 
 ```bash
-kubectl -n aidbg-demo port-forward svc/edge 8080:8080
+kubectl -n quellops-demo port-forward svc/edge 8080:8080
 ```
 
 ## 3) Start backend in background
@@ -66,7 +66,7 @@ You should see `spans_received > 0`.
 If spans stay at 0, check collector logs:
 
 ```bash
-kubectl -n aidbg-otel logs deploy/aidbg-otel-collector --tail=200
+kubectl -n quellops-otel logs deploy/quellops-otel-collector --tail=200
 ```
 
 ### Linux VM fix for `host.docker.internal` (important)
@@ -80,14 +80,14 @@ then the collector cannot resolve Docker Desktop hostname (common on Linux VMs).
 Set exporter endpoint to your Docker bridge gateway (commonly `172.18.0.1:4317`):
 
 ```bash
-kubectl -n aidbg-otel set env deploy/aidbg-otel-collector AIDBG_BACKEND_OTLP_ENDPOINT=172.18.0.1:4317
-kubectl -n aidbg-otel rollout status deploy/aidbg-otel-collector --timeout=3m
+kubectl -n quellops-otel set env deploy/quellops-otel-collector AIDBG_BACKEND_OTLP_ENDPOINT=172.18.0.1:4317
+kubectl -n quellops-otel rollout status deploy/quellops-otel-collector --timeout=3m
 ```
 
 Then verify:
 
 ```bash
-kubectl -n aidbg-otel logs deploy/aidbg-otel-collector --tail=100 | grep -E "Everything is ready|Exporting failed|no such host" || true
+kubectl -n quellops-otel logs deploy/quellops-otel-collector --tail=100 | grep -E "Everything is ready|Exporting failed|no such host" || true
 curl -fsS http://localhost:8088/stats/ingest
 ```
 
@@ -201,7 +201,7 @@ Stop everything:
 
 ```bash
 docker compose down
-kind delete cluster --name aidbg-local
+kind delete cluster --name quellops-local
 ```
 
 ## 9) Quick troubleshooting checklist

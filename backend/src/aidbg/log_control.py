@@ -34,6 +34,7 @@ COMMON_FIELDS = [
     {"name": "max_cycle_bytes", "label": "Maximum bytes per cycle", "type": "number", "default": 16777216, "advanced": True},
     {"name": "max_cycle_records", "label": "Maximum records per cycle", "type": "number", "default": 5000, "advanced": True},
     {"name": "max_cycle_seconds", "label": "Maximum cycle time (seconds)", "type": "number", "default": 60, "advanced": True},
+    {"name": "estimated_cost_per_1000_requests_usd", "label": "Estimated provider cost per 1,000 requests (USD)", "type": "number", "default": 0, "advanced": True},
 ]
 
 
@@ -374,6 +375,43 @@ def router(
                 }
             )
         return {"statuses": result}
+
+    @routes.get("/log-usage")
+    def usage(authorization: str | None = Header(default=None)):
+        authorize(authorization)
+        sources = {item["name"]: item for item in store.list()}
+        totals = {
+            "runs": 0,
+            "failures": 0,
+            "requests": 0,
+            "bytes": 0,
+            "records": 0,
+            "throttles": 0,
+            "estimated_cost_usd": 0.0,
+        }
+        by_provider: dict[str, dict] = {}
+        for item in store.list_watchers():
+            provider = sources.get(item["source_name"], {}).get("provider", "unknown")
+            bucket = by_provider.setdefault(provider, {**totals, "provider": provider})
+            values = {
+                "runs": int(item.get("total_runs") or 0),
+                "failures": int(item.get("total_failures") or 0),
+                "requests": int(item.get("total_requests") or 0),
+                "bytes": int(item.get("total_bytes") or 0),
+                "records": int(item.get("total_records") or 0),
+                "throttles": int(item.get("total_throttles") or 0),
+                "estimated_cost_usd": float(item.get("estimated_cost_usd") or 0),
+            }
+            for key, value in values.items():
+                bucket[key] += value
+                totals[key] += value
+        totals["estimated_cost_usd"] = round(totals["estimated_cost_usd"], 6)
+        for bucket in by_provider.values():
+            bucket["estimated_cost_usd"] = round(bucket["estimated_cost_usd"], 6)
+        return {
+            "totals": totals,
+            "providers": sorted(by_provider.values(), key=lambda row: row["provider"]),
+        }
 
     @routes.get("/log-detections")
     def detections(

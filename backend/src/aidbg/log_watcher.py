@@ -126,6 +126,11 @@ class LogWatcher:
             usage = result.get("usage", {})
             fetched_records = list(result.get("records", []))
             records = len(fetched_records)
+            request_cost = max(
+                0.0,
+                float(source["config"].get("estimated_cost_per_1000_requests_usd") or 0),
+            )
+            cost_usd = int(usage.get("backend_requests", 0)) * request_cost / 1000.0
             caught_up = chunk_end >= end
             self.store.watcher_succeeded(
                 name,
@@ -139,6 +144,7 @@ class LogWatcher:
                 records=records,
                 requests=int(usage.get("backend_requests", 0)),
                 bytes_received=int(usage.get("bytes_received", 0)),
+                cost_usd=cost_usd,
                 owner=self.owner,
             )
             self._emit(

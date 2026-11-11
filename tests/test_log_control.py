@@ -161,6 +161,10 @@ class LogControlAPITests(unittest.TestCase):
                 self.assertEqual(status.status_code, 200, status.text)
                 self.assertEqual(status.json()["statuses"][0]["status"], "paused")
                 self.assertEqual(status.json()["statuses"][0]["source"], "prod")
+                usage = http.get("/admin/log-usage", headers=headers)
+                self.assertEqual(usage.status_code, 200, usage.text)
+                self.assertEqual(usage.json()["totals"]["requests"], 0)
+                self.assertEqual(usage.json()["providers"][0]["provider"], "loki")
 
             replay_client = Mock()
             replay_client.list_sources.return_value = {"sources": []}

@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: pg-stat-scraper
-  namespace: aidbg-demo
+  namespace: quellops-demo
 spec:
   schedule: "*/1 * * * *"
   concurrencyPolicy: Forbid
@@ -13,14 +13,14 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: scraper
-              image: aidbg-demo/inventory:dev
+              image: quellops-demo/inventory:dev
               imagePullPolicy: IfNotPresent
               command:
                 - python
                 - /app/tools/pg_stat_scraper.py
               env:
                 - name: DATABASE_URL
-                  value: postgresql://aidbg:aidbg@postgres.aidbg-demo.svc.cluster.local:5432/aidbg
+                  value: postgresql://aidbg:aidbg@postgres.quellops-demo.svc.cluster.local:5432/aidbg
                 - name: AIDBG_CHANGE_INGEST_URL
                   value: http://172.18.0.1:8088/ingest/change
                 - name: PG_STAT_ENTITY

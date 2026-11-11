@@ -1,8 +1,8 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: aidbg-demo-loadgen
-  namespace: aidbg-demo
+  name: quellops-demo-loadgen
+  namespace: quellops-demo
 spec:
   ttlSecondsAfterFinished: 300
   template:
@@ -10,11 +10,11 @@ spec:
       restartPolicy: Never
       containers:
         - name: loadgen
-          image: aidbg-demo/loadgen:dev
+          image: quellops-demo/loadgen:dev
           imagePullPolicy: IfNotPresent
           env:
             - name: EDGE_URL
-              value: http://edge.aidbg-demo.svc.cluster.local:8080/
+              value: http://edge.quellops-demo.svc.cluster.local:8080/
             - name: DURATION_SECONDS
               value: "90"
             - name: RPS

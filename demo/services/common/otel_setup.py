@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 def setup_otel(service_name: str) -> None:
     endpoint = os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://aidbg-otel-collector.aidbg-otel.svc.cluster.local:4317",
+        "http://quellops-otel-collector.quellops-otel.svc.cluster.local:4317",
     )
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)

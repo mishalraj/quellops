@@ -17,7 +17,7 @@ def _post_change(kind: str, entity: str, metadata: dict) -> None:
         "kind": kind,
         "at_unix_ms": int(time.time() * 1000),
         "entity": entity,
-        "namespace": os.getenv("AIDBG_NAMESPACE", "aidbg-demo"),
+        "namespace": os.getenv("AIDBG_NAMESPACE", "quellops-demo"),
         "metadata": metadata,
     }
     req = urllib.request.Request(

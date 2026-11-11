@@ -5,6 +5,13 @@ import os
 from pathlib import Path
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     # OTLP gRPC receiver bind (collector exports here)
@@ -25,6 +32,24 @@ class Settings:
     control_database_url: str = os.getenv("AIDBG_CONTROL_DATABASE_URL", "")
     # Shared bootstrap credential used by outbound Kubernetes agents.
     k8s_agent_token: str = os.getenv("AIDBG_K8S_AGENT_TOKEN", "")
+    k8s_retention_events: int = int(os.getenv("AIDBG_K8S_RETENTION_EVENTS", "5000"))
+    incident_retention: int = int(os.getenv("AIDBG_INCIDENT_RETENTION", "500"))
+    # Optional Kafka-compatible event stream. Database mode remains zero-setup.
+    event_transport: str = os.getenv("AIDBG_EVENT_TRANSPORT", "database")
+    kafka_bootstrap_servers: str = os.getenv("AIDBG_KAFKA_BOOTSTRAP_SERVERS", "")
+    kafka_k8s_topic: str = os.getenv(
+        "AIDBG_KAFKA_K8S_TOPIC", "quellops.kubernetes.events.v1"
+    )
+    kafka_consumer_group: str = os.getenv(
+        "AIDBG_KAFKA_CONSUMER_GROUP", "quellops-central-v1"
+    )
+    # Local development may embed the consumer. Production runs aidbg.kafka_worker.
+    kafka_consumer_embedded: bool = _env_bool("AIDBG_KAFKA_CONSUMER_EMBEDDED", True)
+    kafka_security_protocol: str = os.getenv("AIDBG_KAFKA_SECURITY_PROTOCOL", "")
+    kafka_sasl_mechanism: str = os.getenv("AIDBG_KAFKA_SASL_MECHANISM", "")
+    kafka_sasl_username: str = os.getenv("AIDBG_KAFKA_SASL_USERNAME", "")
+    kafka_sasl_password: str = os.getenv("AIDBG_KAFKA_SASL_PASSWORD", "")
+    kafka_ssl_ca_location: str = os.getenv("AIDBG_KAFKA_SSL_CA_LOCATION", "")
     # Analysis windows in seconds (short windows for local MVP).
     current_window_s: int = int(os.getenv("AIDBG_CURRENT_WINDOW_S", "300"))
     baseline_window_s: int = int(os.getenv("AIDBG_BASELINE_WINDOW_S", "900"))

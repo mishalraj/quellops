@@ -29,7 +29,7 @@ This is a **POC-polish-first** goal. MVP-hardening work (durability, jobs, advan
 | Backend (FastAPI, Python) | OTLP ingest, signal store, anomaly detection, incident assembly, explain endpoint, UI serving | `backend/src/aidbg/` |
 | Agent (Go) | Watches K8s objects/events and sends normalized events to backend | `agent/` |
 | Collector (K8s) | Receives OTLP in-cluster and exports to backend OTLP gRPC endpoint | `deploy/otel-collector/collector.yaml` |
-| Demo mesh (4 services) | Deterministic topology for testing and demos | `demo/services/` + `deploy/aidbg-demo/` |
+| Demo mesh (4 services) | Deterministic topology for testing and demos | `demo/services/` + `deploy/quellops-demo/` |
 | Scenario tooling | Fault injection, load, assertions, artifacts | `scripts/run_demo_scenario.sh`, `scripts/run_all_demo_scenarios.sh`, `scenarios/demo/` |
 
 ### 2.2 Data paths

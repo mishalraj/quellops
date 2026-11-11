@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import statistics
 import threading
 import time
 from dataclasses import asdict
@@ -14,6 +15,18 @@ from .log_store import LogSourceStore
 ERROR_PATTERN = re.compile(
     r"\b(error|exception|timeout|timed out|failed|failure|fatal|panic|denied|unavailable|refused)\b",
     re.IGNORECASE,
+)
+SIGNAL_PATTERNS = {
+    "timeout_pattern": re.compile(r"\b(timeout|timed out|deadline exceeded)\b", re.I),
+    "connection_pattern": re.compile(r"\b(connection (refused|reset)|unavailable|broken pipe|no route to host)\b", re.I),
+    "authentication_pattern": re.compile(r"\b(unauthorized|forbidden|permission denied|invalid (token|credential)|access denied)\b", re.I),
+    "rate_limit_pattern": re.compile(r"\b(rate.?limit|too many requests|throttl(ed|ing)|http 429)\b", re.I),
+    "resource_exhaustion_pattern": re.compile(r"\b(out of memory|oomkilled|oom killing|disk full|no space left|resource exhausted)\b", re.I),
+    "database_pattern": re.compile(r"\b(deadlock|connection pool exhausted|too many connections|lock wait timeout|query cancelled)\b", re.I),
+    "crash_pattern": re.compile(r"\b(panic|segmentation fault|crashloopbackoff|fatal|uncaught exception)\b", re.I),
+}
+FINGERPRINT_NOISE = re.compile(
+    r"\b(?:[0-9a-f]{8}-[0-9a-f-]{27,}|0x[0-9a-f]+|\d+(?:\.\d+)*)\b", re.I
 )
 
 
@@ -71,6 +84,21 @@ class LogSignalAnalyzer:
             return "error"
         return ""
 
+    @staticmethod
+    def _fingerprint(message: str) -> str:
+        return " ".join(FINGERPRINT_NOISE.sub("?", message.lower()).split())[:300]
+
+    def _baseline_records(self, source: str) -> float:
+        if self.history_store is None:
+            return 0.0
+        recent = self.history_store.list_detections(source, limit=20)
+        counts = [
+            int(item.get("records") or 0)
+            for item in recent
+            if item.get("kind") == "watcher_run" and not item.get("error")
+        ]
+        return float(statistics.median(counts)) if counts else 0.0
+
     def observe(self, batch: dict[str, Any]) -> None:
         now = time.time()
         source = str(batch.get("source") or "")
@@ -107,12 +135,27 @@ class LogSignalAnalyzer:
         stale_catchup = now - end > 300
         reasons: list[str] = []
         if not stale_catchup:
-            if count >= 5:
+            baseline = self._baseline_records(source)
+            if count >= 5 and baseline == 0:
                 reasons.append("matching_log_volume")
+            if baseline > 0 and count >= max(5, baseline * 3):
+                reasons.append("volume_anomaly")
             if previous > 0 and count >= max(previous * 2, previous + 3):
                 reasons.append("record_spike")
-            if any(ERROR_PATTERN.search(str(record.get("message") or "")) for record in records):
+            messages = [str(record.get("message") or "") for record in records]
+            if any(ERROR_PATTERN.search(message) for message in messages):
                 reasons.append("error_pattern")
+            for reason, pattern in SIGNAL_PATTERNS.items():
+                if any(pattern.search(message) for message in messages):
+                    reasons.append(reason)
+            fingerprints: dict[str, int] = {}
+            for message in messages:
+                fingerprint = self._fingerprint(message)
+                if fingerprint:
+                    fingerprints[fingerprint] = fingerprints.get(fingerprint, 0) + 1
+            if fingerprints and max(fingerprints.values()) >= 3:
+                reasons.append("repeated_pattern")
+            reasons = list(dict.fromkeys(reasons))
 
         samples = self._samples(records)
         investigation: dict[str, Any] = {}

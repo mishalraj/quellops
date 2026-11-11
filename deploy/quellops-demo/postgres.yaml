@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init
-  namespace: aidbg-demo
+  namespace: quellops-demo
 data:
   init.sql: |
     CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
@@ -12,7 +12,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: aidbg-demo
+  namespace: quellops-demo
 spec:
   selector:
     app: postgres
@@ -24,7 +24,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: aidbg-demo
+  namespace: quellops-demo
   labels:
     app: postgres
 spec:

@@ -19,8 +19,8 @@ flowchart LR
   subgraph cluster [Kind cluster]
     Demo[OpenTelemetry Demo workloads]
     DemoCol[otel-collector in otel-demo]
-    AidbgCol[aidbg-otel-collector in aidbg-otel]
-    Agent[aidbg-agent]
+    AidbgCol[quellops-otel-collector in quellops-otel]
+    Agent[quellops-agent]
   end
   subgraph host [Host / Docker]
     Backend[aidbg-backend Python]
@@ -48,8 +48,8 @@ flowchart LR
 ### 3.1 Distributed traces (OTLP)
 
 - Demo services emit OTLP to the **in-namespace** `otel-collector` (Helm subchart).
-- Helm values (`deploy/otel-demo/values-light.yaml`) add an exporter so traces are also sent to **`aidbg-otel-collector.aidbg-otel`** (cluster DNS).
-- `aidbg-otel-collector` forwards OTLP **gRPC** to the **backend** on the host (Docker-published `4317` by default; Linux may need the correct bridge IP in `AIDBG_BACKEND_OTLP_ENDPOINT`).
+- Helm values (`deploy/otel-demo/values-light.yaml`) add an exporter so traces are also sent to **`quellops-otel-collector.quellops-otel`** (cluster DNS).
+- `quellops-otel-collector` forwards OTLP **gRPC** to the **backend** on the host (Docker-published `4317` by default; Linux may need the correct bridge IP in `AIDBG_BACKEND_OTLP_ENDPOINT`).
 
 **Backend processing** (`backend/src/aidbg/ingest_otlp.py`):
 
@@ -62,8 +62,8 @@ flowchart LR
 
 ### 3.2 Kubernetes signals
 
-- **`aidbg-agent`** uses shared informers (Deployments, Pods, Events) and maps cluster changes to a small JSON schema (`agent/main.go`). Rollout updates emit types like **`deploy.started`** / **`deploy.completed`** / **`deploy.failed`** (not only `k8s.deployment.added`); the ranker treats these as deployment signals for **`recent_deploy`**.
-- Each signal is sent to **`POST /ingest/k8s`** on the backend.
+- **`quellops-agent`** watches Deployments, Pods, Kubernetes Events, and HPAs and maps meaningful changes to a small JSON schema (`agent/main_v2.go`). It never reads Secrets or ConfigMaps.
+- Events are batched and sent to **`POST /api/kubernetes/v1/events`** on the backend.
 - Backend wraps payloads as `K8sSignal` and appends to an in-memory deque (`backend/src/aidbg/api.py`, `engine.py`).
 
 These events power **deploy / scale / crashloop-style** cause candidates in the incident builder.
@@ -85,7 +85,7 @@ Normalized events via **`POST /ingest/change`**:
 | `kind` | Source |
 |--------|--------|
 | `code.push` | GitHub webhook (`POST /webhook/github`) or scenario curl |
-| `config.changed` | `aidbg-agent` ConfigMap / Secret / HPA informers |
+| `config.changed` | `quellops-agent` HPA changes |
 | `db.migration.applied` | Demo migration hook (`services.common.migrate`) |
 | `db.slow_query_stat` | Optional `pg_stat_statements` CronJob scraper |
 
@@ -182,7 +182,7 @@ All candidates are **heuristic** and carry a numeric **`score`**. They are conca
 ## 6. Observability of the pipeline
 
 - **Ingest health:** `GET /stats/ingest` (OTLP batches) vs `POST /ingest/k8s` volume (see backend logs / agent).  
-- **Collector:** `kubectl -n aidbg-otel logs deploy/aidbg-otel-collector`  
+- **Collector:** `kubectl -n quellops-otel logs deploy/quellops-otel-collector`
 - **Scenario artifacts:** `artifacts/<scenario>/incident.json`, `graph_snapshot.json`, `anomalies.json`, `llm_answer.json`  
 - **Schemas:** `backend/schemas/` for stable JSON shapes
 

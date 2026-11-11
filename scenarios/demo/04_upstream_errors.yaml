@@ -1,6 +1,6 @@
 name: 04_upstream_errors
 description: Catalog returns errors; inventory/checkout path should show errors.
-namespace: aidbg-demo
+namespace: quellops-demo
 target:
   deployment: catalog
 inject:

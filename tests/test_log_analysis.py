@@ -77,6 +77,22 @@ class LogSignalAnalyzerTests(unittest.TestCase):
         self.client.investigate.assert_not_called()
         self.assertEqual(self.signals.recent_log_signals()[-1]["reasons"], [])
 
+    def test_specific_failure_classes_and_repeated_patterns_are_detected(self):
+        now = time.time()
+        self.analyzer.observe(
+            {
+                "ok": True,
+                "source": "prod",
+                "provider": "loki",
+                "window_start_unix_s": now - 30,
+                "window_end_unix_s": now,
+                "records": records(3, "HTTP 429 rate limit exceeded for request 123"),
+            }
+        )
+        signal = self.signals.recent_log_signals()[-1]
+        self.assertIn("rate_limit_pattern", signal["reasons"])
+        self.assertIn("repeated_pattern", signal["reasons"])
+
     def test_old_catchup_batch_cannot_trigger_current_incident(self):
         now = time.time()
         self.analyzer.observe(

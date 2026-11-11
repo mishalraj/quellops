@@ -1,6 +1,6 @@
 name: 02_dependency_down
 description: Scale catalog to zero; dependency should rank first.
-namespace: aidbg-demo
+namespace: quellops-demo
 target:
   deployment: catalog
 inject:

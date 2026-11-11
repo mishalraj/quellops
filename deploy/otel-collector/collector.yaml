@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: aidbg-otel
+  name: quellops-otel
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: aidbg-otel-collector-config
-  namespace: aidbg-otel
+  name: quellops-otel-collector-config
+  namespace: quellops-otel
 data:
   collector.yaml: |
     receivers:
@@ -37,17 +37,17 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aidbg-otel-collector
-  namespace: aidbg-otel
+  name: quellops-otel-collector
+  namespace: quellops-otel
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: aidbg-otel-collector
+      app: quellops-otel-collector
   template:
     metadata:
       labels:
-        app: aidbg-otel-collector
+        app: quellops-otel-collector
     spec:
       containers:
         - name: otelcol
@@ -69,7 +69,7 @@ spec:
       volumes:
         - name: conf
           configMap:
-            name: aidbg-otel-collector-config
+            name: quellops-otel-collector-config
             items:
               - key: collector.yaml
                 path: collector.yaml
@@ -77,11 +77,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: aidbg-otel-collector
-  namespace: aidbg-otel
+  name: quellops-otel-collector
+  namespace: quellops-otel
 spec:
   selector:
-    app: aidbg-otel-collector
+    app: quellops-otel-collector
   ports:
     - name: otlp-grpc
       port: 4317

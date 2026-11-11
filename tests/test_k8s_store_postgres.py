@@ -55,6 +55,20 @@ class PostgresKubernetesStoreTests(unittest.TestCase):
         self.assertEqual(replica.get(self.cluster_id)["selected_namespaces"], ["production"])
         self.assertEqual(replica.list_events(self.cluster_id)[0]["reason"], "Unhealthy")
 
+        self.assertEqual(self.store.count_transport_backlog(), 1)
+        first_claim = self.store.claim_transport_batch("replica-a")
+        self.assertEqual(len(first_claim), 1)
+        self.assertEqual(replica.claim_transport_batch("replica-b"), [])
+        self.store.release_transport(
+            "replica-a", [first_claim[0]["id"]], "simulated retry"
+        )
+        retry_claim = replica.claim_transport_batch("replica-b")
+        self.assertEqual(len(retry_claim), 1)
+        replica.mark_transport_complete(
+            "replica-b", [retry_claim[0]["id"]]
+        )
+        self.assertEqual(self.store.count_transport_backlog(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

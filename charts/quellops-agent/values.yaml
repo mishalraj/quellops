@@ -1,0 +1,40 @@
+image:
+  repository: quellops/kubernetes-agent
+  tag: "0.3.0"
+  pullPolicy: IfNotPresent
+
+controlPlaneURL: "http://quellops:8088"
+clusterID: ""
+clusterName: ""
+
+credentials:
+  existingSecret: ""
+  bootstrapToken: ""
+  clusterToken: ""
+
+queue:
+  limit: 10000
+  path: /var/lib/quellops-agent/events.json
+
+persistence:
+  enabled: true
+  size: 256Mi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  annotations:
+    helm.sh/resource-policy: keep
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+

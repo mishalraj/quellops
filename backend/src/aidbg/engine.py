@@ -253,16 +253,42 @@ class SignalStore:
                 score = 0.9
             if "record_spike" in reasons:
                 score = max(score, 0.86)
+            if "volume_anomaly" in reasons:
+                score = max(score, 0.84)
+            if any(
+                reason in reasons
+                for reason in (
+                    "timeout_pattern",
+                    "connection_pattern",
+                    "authentication_pattern",
+                    "rate_limit_pattern",
+                    "resource_exhaustion_pattern",
+                    "database_pattern",
+                    "crash_pattern",
+                )
+            ):
+                score = max(score, 0.94)
+            if "repeated_pattern" in reasons:
+                score = max(score, 0.8)
             if signal.get("investigation", {}).get("target_reached"):
                 score += 0.05
             entity = str(signal.get("service") or source)
             if entity in affected_entities:
                 score += 0.2
-            cause_type = (
-                "log_error_pattern"
-                if "error_pattern" in reasons
-                else "log_volume_spike"
-            )
+            cause_type = "log_volume_spike"
+            for reason, candidate_type in (
+                ("resource_exhaustion_pattern", "log_resource_exhaustion"),
+                ("authentication_pattern", "log_authentication_failure"),
+                ("rate_limit_pattern", "log_rate_limit"),
+                ("database_pattern", "log_database_failure"),
+                ("timeout_pattern", "log_timeout"),
+                ("connection_pattern", "log_connection_failure"),
+                ("crash_pattern", "log_crash"),
+                ("error_pattern", "log_error_pattern"),
+            ):
+                if reason in reasons:
+                    cause_type = candidate_type
+                    break
             sample_messages = [
                 str(sample.get("message") or "")[:240]
                 for sample in (signal.get("samples") or [])[:3]
@@ -748,7 +774,12 @@ class SignalStore:
                 continue
             msg = str(ev.get("message", "")).lower()
             reason = str(ev.get("reason", "")).lower()
-            if "back-off" not in msg and "crashloop" not in msg and "unhealthy" not in reason:
+            if (
+                "back-off" not in msg
+                and "crashloop" not in msg
+                and "crashloop" not in reason
+                and "unhealthy" not in reason
+            ):
                 continue
             age_s = (now_ms - int(ev.get("at_unix_ms", now_ms))) / 1000.0
             if age_s > 1800:

@@ -6,7 +6,7 @@ Minimal Python FastAPI chain for POC testing:
 
 `inventory` uses **Postgres** (OTel `psycopg2` spans) for stock queries.
 
-Deploy with `scripts/deploy_aidbg_demo.sh`. Run scenarios with `scripts/run_demo_scenario.sh <name>`.
+Deploy with `scripts/deploy_quellops_demo.sh`. Run scenarios with `scripts/run_demo_scenario.sh <name>`.
 
 ## Fault injection
 
@@ -24,7 +24,7 @@ Deploy with `scripts/deploy_aidbg_demo.sh`. Run scenarios with `scripts/run_demo
 
 ## pg_stat_statements scraper
 
-CronJob `deploy/aidbg-demo/pg-stat-scraper.yaml` posts cluster-wide slow query stats to `/ingest/change`.
+CronJob `deploy/quellops-demo/pg-stat-scraper.yaml` posts cluster-wide slow query stats to `/ingest/change`.
 
 ## Scenarios
 

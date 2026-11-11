@@ -8,8 +8,8 @@ cd "$ROOT"
 
 BACKEND_URL="${BACKEND_URL:-http://localhost:8088}"
 EDGE_URL="${EDGE_URL:-http://localhost:8080/}"
-CLUSTER_NAME="${CLUSTER_NAME:-aidbg-local}"
-DEMO_NS="${AIDBG_DEMO_NS:-aidbg-demo}"
+CLUSTER_NAME="${CLUSTER_NAME:-quellops-local}"
+DEMO_NS="${AIDBG_DEMO_NS:-quellops-demo}"
 PF_LOCAL_PORT="${PF_LOCAL_PORT:-8080}"
 PF_PID_FILE="${AIDBG_PF_PID_FILE:-/tmp/aidbg-edge-port-forward.pid}"
 PF_LOG_FILE="${AIDBG_PF_LOG_FILE:-/tmp/aidbg-edge-port-forward.log}"
@@ -44,7 +44,7 @@ Environment:
   BACKEND_URL              Default http://localhost:8088
   EDGE_URL                 Default http://localhost:8080/
   DOCKER_HOST_ADDR         Host reachable from Kind pods (auto: host.docker.internal on macOS, 172.18.0.1 on Linux)
-  CLUSTER_NAME             kind cluster name (default aidbg-local)
+  CLUSTER_NAME             kind cluster name (default quellops-local)
 
 After start:
   UI:      http://localhost:8088/ui/
@@ -98,15 +98,15 @@ apply_collector_and_agent_hosts() {
   local otlp="${BACKEND_OTLP_ENDPOINT:-${host}:4317}"
 
   echo "Configuring collector OTLP export -> ${otlp}"
-  kubectl -n aidbg-otel set env deploy/aidbg-otel-collector \
+  kubectl -n quellops-otel set env deploy/quellops-otel-collector \
     "AIDBG_BACKEND_OTLP_ENDPOINT=${otlp}" >/dev/null
-  kubectl -n aidbg-otel rollout status deploy/aidbg-otel-collector --timeout=5m >/dev/null
+  kubectl -n quellops-otel rollout status deploy/quellops-otel-collector --timeout=5m >/dev/null
 
-  if kubectl -n aidbg-agent get deploy aidbg-agent >/dev/null 2>&1; then
+  if kubectl -n quellops-agent get deploy quellops-agent >/dev/null 2>&1; then
     echo "Configuring Kubernetes agent -> http://${host}:8088"
-    kubectl -n aidbg-agent set env deploy/aidbg-agent \
+    kubectl -n quellops-agent set env deploy/quellops-agent \
       "AIDBG_BACKEND_URL=http://${host}:8088" >/dev/null
-    kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=3m >/dev/null
+    kubectl -n quellops-agent rollout status deploy/quellops-agent --timeout=3m >/dev/null
   fi
 }
 
@@ -186,7 +186,7 @@ wait_for_spans() {
     sleep 5
   done
   echo "warn: spans_received still low after ${wait_secs}s (check collector logs)" >&2
-  kubectl -n aidbg-otel logs deploy/aidbg-otel-collector --tail=40 2>/dev/null || true
+  kubectl -n quellops-otel logs deploy/quellops-otel-collector --tail=40 2>/dev/null || true
   return 1
 }
 
@@ -260,7 +260,7 @@ cmd_start() {
     scripts/deploy_collector.sh
     apply_collector_and_agent_hosts "$DOCKER_HOST_ADDR"
     scripts/deploy_agent.sh
-    BACKEND_HOST="$DOCKER_HOST_ADDR" scripts/deploy_aidbg_demo.sh
+    BACKEND_HOST="$DOCKER_HOST_ADDR" scripts/deploy_quellops_demo.sh
   else
     echo ""
     echo "[1/6] Skipping bootstrap (--skip-bootstrap)"

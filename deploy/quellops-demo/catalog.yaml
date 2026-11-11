@@ -1,33 +1,31 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: checkout
-  namespace: aidbg-demo
+  name: catalog
+  namespace: quellops-demo
   labels:
-    app: checkout
+    app: catalog
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: checkout
+      app: catalog
   template:
     metadata:
       labels:
-        app: checkout
+        app: catalog
     spec:
       containers:
-        - name: checkout
-          image: aidbg-demo/checkout:dev
+        - name: catalog
+          image: quellops-demo/catalog:dev
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
             - name: SERVICE_NAME
-              value: checkout
+              value: catalog
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://aidbg-otel-collector.aidbg-otel.svc.cluster.local:4317
-            - name: DOWNSTREAM_URL
-              value: http://inventory.aidbg-demo.svc.cluster.local:8080
+              value: http://quellops-otel-collector.quellops-otel.svc.cluster.local:4317
             - name: FAULT_LATENCY_MS
               value: "0"
             - name: FAULT_ERROR_RATE
@@ -42,11 +40,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: checkout
-  namespace: aidbg-demo
+  name: catalog
+  namespace: quellops-demo
 spec:
   selector:
-    app: checkout
+    app: catalog
   ports:
     - port: 8080
       targetPort: 8080

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-aidbg-local}"
+CLUSTER_NAME="${CLUSTER_NAME:-quellops-local}"
 
 if kind get clusters | grep -qx "$CLUSTER_NAME"; then
   echo "kind cluster '$CLUSTER_NAME' already exists"

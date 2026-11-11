@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "quellops-agent.fullname" . }}
+  labels:
+    {{- include "quellops-agent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "quellops-agent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "quellops-agent.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "quellops-agent.fullname" . }}
+      securityContext:
+        fsGroup: 65532
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: AIDBG_BACKEND_URL
+              value: {{ required "controlPlaneURL is required" .Values.controlPlaneURL | quote }}
+            - name: AIDBG_CLUSTER_ID
+              value: {{ required "clusterID is required" .Values.clusterID | quote }}
+            - name: AIDBG_CLUSTER_NAME
+              value: {{ default .Values.clusterID .Values.clusterName | quote }}
+            - name: AIDBG_K8S_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "quellops-agent.secretName" . }}
+                  key: bootstrap-token
+            - name: AIDBG_K8S_CLUSTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "quellops-agent.secretName" . }}
+                  key: cluster-token
+                  optional: true
+            - name: AIDBG_K8S_QUEUE_LIMIT
+              value: {{ .Values.queue.limit | quote }}
+            - name: AIDBG_K8S_QUEUE_PATH
+              value: {{ .Values.queue.path | quote }}
+            - name: AIDBG_K8S_TOKEN_PATH
+              value: /var/lib/quellops-agent/agent.token
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/quellops-agent
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: state
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "quellops-agent.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

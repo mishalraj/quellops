@@ -157,10 +157,15 @@ bounded chunks. A durable checkpoint advances only when the Go service confirms 
 the entire chunk was fetched. Failures keep the previous checkpoint, so the same
 range is retried later.
 
-The watcher stores its checkpoint, last error, record count, request count, and byte
-count in the control database. It does not store fetched log messages. Each run is
-passed to a deterministic central analyzer. Error words, matching-log volume, or a
-sudden record increase can trigger one bounded `Investigate` call. A five-minute
+The watcher stores its checkpoint, failures, throttling, cumulative provider requests,
+bytes, records, and estimated cost in the control database. It does not store fetched
+log messages. The estimated cost uses the source's configured cost per 1,000 requests;
+it is an operator estimate rather than a provider bill. Totals are available at
+`GET /admin/log-usage` and on the monitoring cards.
+
+Each run is passed to a deterministic central analyzer. It detects volume changes,
+repeated message shapes, timeouts, connection failures, authentication failures, rate
+limits, resource exhaustion, database failures, and crashes. A five-minute
 cooldown limits repeated investigations. Small redacted samples are kept only in
 memory as incident evidence; catch-up windows older than five minutes do not trigger
 current incidents. Three consecutive watcher failures become a source-unavailable
@@ -214,4 +219,5 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover \
 ```
 
 Provider fixtures cover normalization, safe transport behavior, adaptive growth,
-time splitting, and gRPC authentication without contacting live accounts.
+time splitting, and gRPC authentication. The opt-in real-provider harness and local
+Loki test are described in [LOG_CONNECTOR_VALIDATION.md](LOG_CONNECTOR_VALIDATION.md).

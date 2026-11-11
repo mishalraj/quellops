@@ -10,7 +10,7 @@ BACKEND_OTLP_ENDPOINT="${BACKEND_OTLP_ENDPOINT:-172.18.0.1:4317}"
 CF_TUNNEL_URL_TARGET="${CF_TUNNEL_URL_TARGET:-http://localhost:8088}"
 CF_LOG_FILE="${CF_LOG_FILE:-/tmp/aidbg-cloudflared.log}"
 CF_START_WAIT_SECONDS="${CF_START_WAIT_SECONDS:-12}"
-CLUSTER_NAME="${CLUSTER_NAME:-aidbg-local}"
+CLUSTER_NAME="${CLUSTER_NAME:-quellops-local}"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -85,8 +85,8 @@ try_step "kind setup" scripts/setup_kind.sh
 try_step "collector deploy" scripts/deploy_collector.sh
 
 echo "Applying Linux-friendly collector endpoint: ${BACKEND_OTLP_ENDPOINT}"
-if kubectl -n aidbg-otel set env deploy/aidbg-otel-collector "AIDBG_BACKEND_OTLP_ENDPOINT=${BACKEND_OTLP_ENDPOINT}" >/dev/null \
-  && kubectl -n aidbg-otel rollout status deploy/aidbg-otel-collector --timeout=5m >/dev/null; then
+if kubectl -n quellops-otel set env deploy/quellops-otel-collector "AIDBG_BACKEND_OTLP_ENDPOINT=${BACKEND_OTLP_ENDPOINT}" >/dev/null \
+  && kubectl -n quellops-otel rollout status deploy/quellops-otel-collector --timeout=5m >/dev/null; then
   pass "collector endpoint set to ${BACKEND_OTLP_ENDPOINT}"
 else
   fail "collector endpoint update/rollout"
@@ -94,18 +94,18 @@ fi
 
 try_step "agent deploy" scripts/deploy_agent.sh
 
-if kubectl -n aidbg-agent get deploy aidbg-agent >/dev/null 2>&1; then
+if kubectl -n quellops-agent get deploy quellops-agent >/dev/null 2>&1; then
   AGENT_HOST="${BACKEND_OTLP_ENDPOINT%:*}"
-  if kubectl -n aidbg-agent set env deploy/aidbg-agent \
+  if kubectl -n quellops-agent set env deploy/quellops-agent \
     "AIDBG_BACKEND_URL=http://${AGENT_HOST}:8088" >/dev/null \
-    && kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=3m >/dev/null; then
+    && kubectl -n quellops-agent rollout status deploy/quellops-agent --timeout=3m >/dev/null; then
     pass "agent backend URL set to http://${AGENT_HOST}:8088"
   else
     fail "agent backend URL update"
   fi
 fi
 
-try_step "aidbg-demo mesh deploy" scripts/deploy_aidbg_demo.sh
+try_step "quellops-demo mesh deploy" scripts/deploy_quellops_demo.sh
 
 print_hr
 echo "2) Starting backend in background..."
@@ -142,13 +142,13 @@ else
   fail "backend healthz unreachable at ${BACKEND_URL}/healthz"
 fi
 
-if kubectl -n aidbg-otel rollout status deploy/aidbg-otel-collector --timeout=30s >/dev/null; then
+if kubectl -n quellops-otel rollout status deploy/quellops-otel-collector --timeout=30s >/dev/null; then
   pass "aidbg collector rollout healthy"
 else
   fail "aidbg collector rollout unhealthy"
 fi
 
-if kubectl -n aidbg-agent rollout status deploy/aidbg-agent --timeout=30s >/dev/null; then
+if kubectl -n quellops-agent rollout status deploy/quellops-agent --timeout=30s >/dev/null; then
   pass "aidbg agent rollout healthy"
 else
   fail "aidbg agent rollout unhealthy"
@@ -167,7 +167,7 @@ else
   fail "stats/ingest not reachable"
 fi
 
-COL_LOG_TAIL="$(kubectl -n aidbg-otel logs deploy/aidbg-otel-collector --tail=120 2>/dev/null || true)"
+COL_LOG_TAIL="$(kubectl -n quellops-otel logs deploy/quellops-otel-collector --tail=120 2>/dev/null || true)"
 if [[ -n "$COL_LOG_TAIL" ]]; then
   if printf "%s" "$COL_LOG_TAIL" | grep -Eqi "no such host|host\.docker\.internal"; then
     fail "collector still shows host.docker.internal DNS errors"

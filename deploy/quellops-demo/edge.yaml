@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: edge
-  namespace: aidbg-demo
+  namespace: quellops-demo
   labels:
     app: edge
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: edge
-          image: aidbg-demo/edge:dev
+          image: quellops-demo/edge:dev
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -25,9 +25,9 @@ spec:
             - name: SERVICE_NAME
               value: edge
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://aidbg-otel-collector.aidbg-otel.svc.cluster.local:4317
+              value: http://quellops-otel-collector.quellops-otel.svc.cluster.local:4317
             - name: DOWNSTREAM_URL
-              value: http://checkout.aidbg-demo.svc.cluster.local:8080
+              value: http://checkout.quellops-demo.svc.cluster.local:8080
             - name: FAULT_LATENCY_MS
               value: "0"
             - name: FAULT_ERROR_RATE
@@ -43,7 +43,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: edge
-  namespace: aidbg-demo
+  namespace: quellops-demo
 spec:
   selector:
     app: edge

@@ -3,9 +3,9 @@
 set -euo pipefail
 
 BACKEND_URL="${BACKEND_URL:-http://localhost:8088}"
-NS="${AIDBG_DEMO_NS:-aidbg-demo}"
+NS="${AIDBG_DEMO_NS:-quellops-demo}"
 
-echo "=== aidbg-demo smoke check ==="
+echo "=== quellops-demo smoke check ==="
 kubectl -n "$NS" get pods
 curl -fsS "${BACKEND_URL}/healthz" && echo ""
 curl -fsS "${BACKEND_URL}/stats/ingest" && echo ""

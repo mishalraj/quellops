@@ -35,8 +35,8 @@
 
 | Task ID | Task | Status | Notes |
 |---|---|---|---|
-| K8S-01 | Create demo namespace and service manifests | Done | `deploy/aidbg-demo/namespace.yaml` + service manifests |
-| K8S-02 | Add deploy script for demo stack | Done | `scripts/deploy_aidbg_demo.sh` |
+| K8S-01 | Create demo namespace and service manifests | Done | `deploy/quellops-demo/namespace.yaml` + service manifests |
+| K8S-02 | Add deploy script for demo stack | Done | `scripts/deploy_quellops_demo.sh` |
 | K8S-03 | Add reset and smoke-check scripts | Done | `scripts/demo_reset.sh`, `scripts/demo_smoke_check.sh` |
 | K8S-04 | Add collector/agent host wiring in deployment flow | Done | Endpoint env handling included in scripts |
 
@@ -46,8 +46,8 @@
 
 | Task ID | Task | Status | Notes |
 |---|---|---|---|
-| DB-01 | Enable Postgres with `pg_stat_statements` preload and extension | Done | `deploy/aidbg-demo/postgres.yaml` |
-| DB-02 | Add periodic scraper for `pg_stat_statements` | Done | `deploy/aidbg-demo/pg-stat-scraper.yaml`, `demo/tools/pg_stat_scraper.py` |
+| DB-01 | Enable Postgres with `pg_stat_statements` preload and extension | Done | `deploy/quellops-demo/postgres.yaml` |
+| DB-02 | Add periodic scraper for `pg_stat_statements` | Done | `deploy/quellops-demo/pg-stat-scraper.yaml`, `demo/tools/pg_stat_scraper.py` |
 | DB-03 | Ingest DB stat signal in backend ranking pipeline | Done | `db.slow_query_stat` supported in `backend/src/aidbg/engine.py` |
 | DB-04 | Replace Postgres-only collection with generic adapter contract | Pending | See `docs/DB_OBSERVABILITY_GENERIC_WORK_PACKAGE.md` |
 | DB-05 | Add production safety controls (timeout, rate limit, backoff, kill switch) | Pending | Must be complete before prod usage |

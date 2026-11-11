@@ -29,6 +29,7 @@ class LogWatcherTests(unittest.TestCase):
                 "url": "https://loki.example.com",
                 "query": "{app=\"api\"}",
                 "max_scope_s": 60,
+                "estimated_cost_per_1000_requests_usd": 5,
             },
             {},
         )
@@ -61,6 +62,10 @@ class LogWatcherTests(unittest.TestCase):
         self.assertEqual(saved["last_records"], 2)
         self.assertEqual(saved["last_requests"], 3)
         self.assertEqual(saved["last_bytes"], 400)
+        self.assertEqual(saved["total_runs"], 1)
+        self.assertEqual(saved["total_requests"], 3)
+        self.assertEqual(saved["total_records"], 2)
+        self.assertAlmostEqual(saved["estimated_cost_usd"], 0.015)
         batch = observer.call_args.args[0]
         self.assertEqual(batch["provider"], "loki")
         self.assertEqual(len(batch["records"]), 2)
@@ -123,6 +128,17 @@ class LogWatcherTests(unittest.TestCase):
         client.fetch_complete.return_value = {"coverage_complete": True, "records": [], "usage": {}}
         watcher.run_once("prod", now=1200)
         self.assertEqual(self.store.get_watcher("prod")["consecutive_failures"], 0)
+
+    def test_throttling_and_failure_totals_are_persisted(self):
+        client = Mock()
+        client.fetch_complete.side_effect = LogClientError("HTTP 429 throttled")
+        LogWatcher(self.store, client, random_source=random.Random(0)).run_once(
+            "prod", now=1000
+        )
+        saved = self.store.get_watcher("prod")
+        self.assertEqual(saved["total_runs"], 1)
+        self.assertEqual(saved["total_failures"], 1)
+        self.assertEqual(saved["total_throttles"], 1)
 
 
 if __name__ == "__main__":

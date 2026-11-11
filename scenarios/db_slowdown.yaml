@@ -1,9 +1,9 @@
 name: db_slowdown
 description: >
-  Real DB slowdown on aidbg-demo inventory: migration + pg_sleep + simulated code push.
-  Run with scripts/run_demo_scenario.sh 05_db_slowdown (aidbg-demo mesh).
+  Real DB slowdown on quellops-demo inventory: migration + pg_sleep + simulated code push.
+  Run with scripts/run_demo_scenario.sh 05_db_slowdown (quellops-demo mesh).
 target:
-  namespace: aidbg-demo
+  namespace: quellops-demo
   deployment: inventory
 inject:
   type: db_slow_query_fault

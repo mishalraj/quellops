@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: inventory
-  namespace: aidbg-demo
+  namespace: quellops-demo
   labels:
     app: inventory
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: inventory
-          image: aidbg-demo/inventory:dev
+          image: quellops-demo/inventory:dev
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -25,15 +25,15 @@ spec:
             - name: SERVICE_NAME
               value: inventory
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://aidbg-otel-collector.aidbg-otel.svc.cluster.local:4317
+              value: http://quellops-otel-collector.quellops-otel.svc.cluster.local:4317
             - name: DOWNSTREAM_URL
-              value: http://catalog.aidbg-demo.svc.cluster.local:8080
+              value: http://catalog.quellops-demo.svc.cluster.local:8080
             - name: DATABASE_URL
-              value: postgresql://aidbg:aidbg@postgres.aidbg-demo.svc.cluster.local:5432/aidbg
+              value: postgresql://aidbg:aidbg@postgres.quellops-demo.svc.cluster.local:5432/aidbg
             - name: AIDBG_CHANGE_INGEST_URL
               value: http://172.18.0.1:8088/ingest/change
             - name: AIDBG_NAMESPACE
-              value: aidbg-demo
+              value: quellops-demo
             - name: FAULT_LATENCY_MS
               value: "0"
             - name: FAULT_ERROR_RATE
@@ -51,7 +51,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: inventory
-  namespace: aidbg-demo
+  namespace: quellops-demo
 spec:
   selector:
     app: inventory

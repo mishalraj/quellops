@@ -1,4 +1,4 @@
-# AIDBG Infrastructure Debugger
+# QuellOps
 
 An open-source system that connects to infrastructure tools, collects evidence, finds
 likely causes of incidents, and helps operators decide what to fix.
@@ -18,6 +18,12 @@ SQLite is the zero-setup default. For shared PostgreSQL storage across backend r
 
 ```bash
 ./install.sh --postgres
+```
+
+For Kafka-compatible event streaming with the bundled Redpanda broker:
+
+```bash
+./install.sh --postgres --kafka
 ```
 
 Both backends store the same encrypted connections, watcher checkpoints, schedules,
@@ -52,9 +58,9 @@ modules continue to work without it.
 
 | Module | Responsibility | Current implementation |
 | --- | --- | --- |
-| Central logic | Combines evidence, ranks causes, and suggests actions | Python / FastAPI |
-| Logs | Fetches bounded logs, normalizes records, redacts configured values, and controls retrieval cost | Go / gRPC |
-| Kubernetes | Discovers clusters and watches an administrator-approved namespace scope | Go agent / Python control API |
+| Central logic | Consumes evidence, ranks causes, and persists incident results | Python / FastAPI |
+| Logs | Discovers provider scopes, fetches bounded logs, detects failure patterns, and tracks API usage and estimated cost | Go / gRPC |
+| Kubernetes | Watches approved cluster scope with durable delivery, per-cluster credentials, and optional Kafka transport | Go agent / Python control API |
 | Tracing | Receives OTLP traces and builds service relationships | Python |
 | Database | Collects database health and slow-query evidence | Initial PostgreSQL support |
 | Changes | Records deployments, code pushes, migrations, and configuration changes | Python |
@@ -84,13 +90,21 @@ Datadog, CloudWatch Logs, Google Cloud Logging, and Azure Log Analytics.
 
 Detailed logs configuration: [docs/LOG_CONNECTORS.md](docs/LOG_CONNECTORS.md)
 
+Live connector validation: [docs/LOG_CONNECTOR_VALIDATION.md](docs/LOG_CONNECTOR_VALIDATION.md)
+
 ## Kubernetes module
 
-Each cluster runs a read-only Go agent that connects outward to aidbg. It discovers
+Each cluster runs a read-only Go agent that connects outward to QuellOps. It discovers
 namespaces and workloads, but monitoring stays off until an administrator chooses the
 allowed namespaces in `/ui/kubernetes.html`. Events and cluster state use the same
 SQLite or PostgreSQL control storage as the logs module.
 
+Existing `AIDBG_*` configuration names remain supported for compatibility.
+
 Kubernetes setup: [docs/KUBERNETES_MODULE.md](docs/KUBERNETES_MODULE.md)
+
+Production Helm chart: [charts/quellops-agent](charts/quellops-agent)
+
+Kafka transport: [docs/KAFKA_TRANSPORT.md](docs/KAFKA_TRANSPORT.md)
 
 Engineering overview: [docs/ENGINEERING_OVERVIEW.md](docs/ENGINEERING_OVERVIEW.md)

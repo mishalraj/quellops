@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-aidbg-local}"
-AGENT_IMAGE="${AGENT_IMAGE:-aidbg-agent:dev}"
+CLUSTER_NAME="${CLUSTER_NAME:-quellops-local}"
+AGENT_IMAGE="${AGENT_IMAGE:-quellops-agent:dev}"
 AGENT_BACKEND_URL="${AIDBG_BACKEND_URL:-http://host.docker.internal:8088}"
 AGENT_CLUSTER_NAME="${AIDBG_CLUSTER_NAME:-$CLUSTER_NAME}"
 

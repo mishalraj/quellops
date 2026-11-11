@@ -9,7 +9,7 @@ from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 def db_dsn() -> str:
     return os.getenv(
         "DATABASE_URL",
-        "postgresql://aidbg:aidbg@postgres.aidbg-demo.svc.cluster.local:5432/aidbg",
+        "postgresql://aidbg:aidbg@postgres.quellops-demo.svc.cluster.local:5432/aidbg",
     )
 
 

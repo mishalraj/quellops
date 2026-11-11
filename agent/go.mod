@@ -1,4 +1,4 @@
-module aidbg-agent
+module quellops-agent
 
 go 1.24.0
 

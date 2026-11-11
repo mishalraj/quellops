@@ -39,9 +39,21 @@ services:
       AIDBG_LOG_API_TOKEN: "${AIDBG_LOG_API_TOKEN:-}"
       AIDBG_ADMIN_API_TOKEN: "${AIDBG_ADMIN_API_TOKEN:-}"
       AIDBG_K8S_AGENT_TOKEN: "${AIDBG_K8S_AGENT_TOKEN:-}"
+      AIDBG_K8S_RETENTION_EVENTS: "${AIDBG_K8S_RETENTION_EVENTS:-5000}"
+      AIDBG_INCIDENT_RETENTION: "${AIDBG_INCIDENT_RETENTION:-500}"
       AIDBG_MASTER_KEY: "${AIDBG_MASTER_KEY:-}"
       AIDBG_CONTROL_DB: "/data/aidbg-control.db"
       AIDBG_CONTROL_DATABASE_URL: "${AIDBG_CONTROL_DATABASE_URL:-}"
+      AIDBG_EVENT_TRANSPORT: "${AIDBG_EVENT_TRANSPORT:-database}"
+      AIDBG_KAFKA_BOOTSTRAP_SERVERS: "${AIDBG_KAFKA_BOOTSTRAP_SERVERS:-}"
+      AIDBG_KAFKA_K8S_TOPIC: "${AIDBG_KAFKA_K8S_TOPIC:-quellops.kubernetes.events.v1}"
+      AIDBG_KAFKA_CONSUMER_GROUP: "${AIDBG_KAFKA_CONSUMER_GROUP:-quellops-central-v1}"
+      AIDBG_KAFKA_CONSUMER_EMBEDDED: "${AIDBG_KAFKA_CONSUMER_EMBEDDED:-false}"
+      AIDBG_KAFKA_SECURITY_PROTOCOL: "${AIDBG_KAFKA_SECURITY_PROTOCOL:-}"
+      AIDBG_KAFKA_SASL_MECHANISM: "${AIDBG_KAFKA_SASL_MECHANISM:-}"
+      AIDBG_KAFKA_SASL_USERNAME: "${AIDBG_KAFKA_SASL_USERNAME:-}"
+      AIDBG_KAFKA_SASL_PASSWORD: "${AIDBG_KAFKA_SASL_PASSWORD:-}"
+      AIDBG_KAFKA_SSL_CA_LOCATION: "${AIDBG_KAFKA_SSL_CA_LOCATION:-}"
       # Optional: enable /explain/latest + UI insights (see docs/LLM_SETUP.md)
       AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT:-}"
       AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY:-}"
@@ -49,6 +61,35 @@ services:
       AZURE_OPENAI_API_VERSION: "${AZURE_OPENAI_API_VERSION:-2024-12-01-preview}"
     volumes:
       - aidbg-control:/data
+
+  aidbg-kafka-worker:
+    profiles: ["kafka"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: aidbg-kafka-worker
+    command: ["python", "-m", "aidbg.kafka_worker"]
+    restart: unless-stopped
+    environment:
+      AIDBG_CONTROL_DB: "/data/aidbg-control.db"
+      AIDBG_CONTROL_DATABASE_URL: "${AIDBG_CONTROL_DATABASE_URL:-}"
+      AIDBG_EVENT_TRANSPORT: "kafka"
+      AIDBG_INCIDENT_RETENTION: "${AIDBG_INCIDENT_RETENTION:-500}"
+      AIDBG_CURRENT_WINDOW_S: "300"
+      AIDBG_BASELINE_WINDOW_S: "900"
+      AIDBG_KAFKA_BOOTSTRAP_SERVERS: "${AIDBG_KAFKA_BOOTSTRAP_SERVERS:-quellops-redpanda:9092}"
+      AIDBG_KAFKA_K8S_TOPIC: "${AIDBG_KAFKA_K8S_TOPIC:-quellops.kubernetes.events.v1}"
+      AIDBG_KAFKA_CONSUMER_GROUP: "${AIDBG_KAFKA_CONSUMER_GROUP:-quellops-central-v1}"
+      AIDBG_KAFKA_SECURITY_PROTOCOL: "${AIDBG_KAFKA_SECURITY_PROTOCOL:-}"
+      AIDBG_KAFKA_SASL_MECHANISM: "${AIDBG_KAFKA_SASL_MECHANISM:-}"
+      AIDBG_KAFKA_SASL_USERNAME: "${AIDBG_KAFKA_SASL_USERNAME:-}"
+      AIDBG_KAFKA_SASL_PASSWORD: "${AIDBG_KAFKA_SASL_PASSWORD:-}"
+      AIDBG_KAFKA_SSL_CA_LOCATION: "${AIDBG_KAFKA_SSL_CA_LOCATION:-}"
+    volumes:
+      - aidbg-control:/data
+    depends_on:
+      quellops-redpanda:
+        condition: service_healthy
 
   aidbg-postgres:
     profiles: ["postgres"]
@@ -67,6 +108,38 @@ services:
     volumes:
       - aidbg-postgres:/var/lib/postgresql/data
 
+  quellops-redpanda:
+    profiles: ["kafka"]
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.6
+    container_name: quellops-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://quellops-redpanda:9092,external://localhost:19092
+      - --rpc-addr
+      - 0.0.0.0:33145
+      - --advertise-rpc-addr
+      - quellops-redpanda:33145
+    ports:
+      - "19092:19092"
+      - "19644:9644"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy: *true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - quellops-redpanda:/var/lib/redpanda/data
+
 volumes:
   aidbg-control:
   aidbg-postgres:
+  quellops-redpanda:

@@ -60,9 +60,9 @@ run_load() {
   dur="${dur:-90}"
   rps="${rps:-10}"
   if [[ "$USE_IN_CLUSTER_LOAD" == "1" ]]; then
-    kubectl -n "$NS" delete job aidbg-demo-loadgen --ignore-not-found >/dev/null 2>&1 || true
-    kubectl apply -f deploy/aidbg-demo/loadgen-job.yaml >/dev/null
-    kubectl -n "$NS" wait --for=condition=complete job/aidbg-demo-loadgen --timeout=10m || true
+    kubectl -n "$NS" delete job quellops-demo-loadgen --ignore-not-found >/dev/null 2>&1 || true
+    kubectl apply -f deploy/quellops-demo/loadgen-job.yaml >/dev/null
+    kubectl -n "$NS" wait --for=condition=complete job/quellops-demo-loadgen --timeout=10m || true
     return 0
   fi
   DURATION_SECONDS="$dur" RPS="$rps" EDGE_URL="$EDGE_URL" \

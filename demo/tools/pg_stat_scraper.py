@@ -15,7 +15,7 @@ import psycopg2
 def main() -> int:
     dsn = os.getenv(
         "DATABASE_URL",
-        "postgresql://aidbg:aidbg@postgres.aidbg-demo.svc.cluster.local:5432/aidbg",
+        "postgresql://aidbg:aidbg@postgres.quellops-demo.svc.cluster.local:5432/aidbg",
     )
     ingest_url = os.getenv(
         "AIDBG_CHANGE_INGEST_URL",
@@ -47,7 +47,7 @@ def main() -> int:
             "kind": "db.slow_query_stat",
             "at_unix_ms": int(time.time() * 1000),
             "entity": entity,
-            "namespace": os.getenv("AIDBG_NAMESPACE", "aidbg-demo"),
+            "namespace": os.getenv("AIDBG_NAMESPACE", "quellops-demo"),
             "metadata": {
                 "query": (query or "")[:512],
                 "calls": int(calls),

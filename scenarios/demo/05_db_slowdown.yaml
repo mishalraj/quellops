@@ -2,7 +2,7 @@ name: 05_db_slowdown
 description: >
   Real DB slowdown — drop inventory index, inject pg_sleep on queries,
   simulate a code push; expect db_slow_query (or db_migration) in top causes.
-namespace: aidbg-demo
+namespace: quellops-demo
 target:
   deployment: inventory
 inject:

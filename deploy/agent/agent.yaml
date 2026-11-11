@@ -1,24 +1,24 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: aidbg-agent
+  name: quellops-agent
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: aidbg-agent
-  namespace: aidbg-agent
+  name: quellops-agent
+  namespace: quellops-agent
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: aidbg-agent-readonly
+  name: quellops-agent-readonly
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list"]
   - apiGroups: [""]
-    resources: ["pods", "events"]
+    resources: ["pods", "events", "nodes", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets"]
@@ -26,39 +26,48 @@ rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: aidbg-agent-readonly
+  name: quellops-agent-readonly
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: aidbg-agent-readonly
+  name: quellops-agent-readonly
 subjects:
   - kind: ServiceAccount
-    name: aidbg-agent
-    namespace: aidbg-agent
+    name: quellops-agent
+    namespace: quellops-agent
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aidbg-agent
-  namespace: aidbg-agent
+  name: quellops-agent
+  namespace: quellops-agent
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: aidbg-agent
+      app: quellops-agent
   template:
     metadata:
       labels:
-        app: aidbg-agent
+        app: quellops-agent
     spec:
-      serviceAccountName: aidbg-agent
+      serviceAccountName: quellops-agent
+      securityContext:
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: agent
-          image: ghcr.io/mishalraj/aidbg-kubernetes-agent:latest
+          image: ghcr.io/mishalraj/quellops-kubernetes-agent:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: AIDBG_BACKEND_URL
@@ -68,8 +77,21 @@ spec:
             - name: AIDBG_K8S_AGENT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: aidbg-agent-credentials
+                  name: quellops-agent-credentials
                   key: token
+            - name: AIDBG_K8S_CLUSTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: quellops-agent-credentials
+                  key: cluster-token
+                  optional: true
+            - name: AIDBG_K8S_QUEUE_PATH
+              value: /var/lib/quellops-agent/events.json
+            - name: AIDBG_K8S_TOKEN_PATH
+              value: /var/lib/quellops-agent/agent.token
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/quellops-agent
           resources:
             requests:
               cpu: 25m
@@ -83,3 +105,18 @@ spec:
             runAsNonRoot: true
             capabilities:
               drop: ["ALL"]
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: quellops-agent-state
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: quellops-agent-state
+  namespace: quellops-agent
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 256Mi

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ type AgentConfig struct {
 	Namespaces     []string `json:"namespaces"`
 	PollIntervalS  int      `json:"poll_interval_s"`
 	MaxBatchEvents int      `json:"max_batch_events"`
+	AgentToken     string   `json:"agent_token,omitempty"`
 }
 
 type Registration struct {
@@ -40,7 +42,20 @@ type Workload struct {
 type controlClient struct {
 	baseURL string
 	token   string
+	mu      sync.RWMutex
 	http    *http.Client
+}
+
+func (c *controlClient) SetToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.token = token
+}
+
+func (c *controlClient) Token() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.token
 }
 
 func newControlClient(baseURL, token string, timeout time.Duration) *controlClient {
@@ -64,7 +79,7 @@ func (c *controlClient) call(ctx context.Context, method, path string, input, ou
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.Token())
 	if input != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -78,11 +93,11 @@ func (c *controlClient) call(ctx context.Context, method, path string, input, ou
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("aidbg returned %s: %s", resp.Status, strings.TrimSpace(string(responseBody)))
+		return fmt.Errorf("QuellOps returned %s: %s", resp.Status, strings.TrimSpace(string(responseBody)))
 	}
 	if output != nil && len(responseBody) > 0 {
 		if err := json.Unmarshal(responseBody, output); err != nil {
-			return fmt.Errorf("decode aidbg response: %w", err)
+			return fmt.Errorf("decode QuellOps response: %w", err)
 		}
 	}
 	return nil

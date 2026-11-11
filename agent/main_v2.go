@@ -17,8 +17,11 @@ import (
 	"syscall"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -27,7 +30,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const agentVersion = "0.2.0"
+const agentVersion = "0.3.0"
 
 type Event struct {
 	EventID   string            `json:"event_id"`
@@ -63,6 +66,10 @@ func (s *scopeState) Allows(namespace string) bool {
 	return ok
 }
 
+func (s *scopeState) Enabled() bool {
+	return len(s.value.Load().(map[string]struct{})) > 0
+}
+
 type errorState struct {
 	mu      sync.Mutex
 	message string
@@ -89,8 +96,11 @@ func main() {
 	clusterName := flag.String("cluster", getenv("AIDBG_CLUSTER_NAME", ""), "friendly cluster name")
 	clusterIDFlag := flag.String("cluster-id", getenv("AIDBG_CLUSTER_ID", ""), "stable cluster identifier")
 	token := flag.String("token", getenv("AIDBG_K8S_AGENT_TOKEN", ""), "agent bootstrap token")
+	clusterToken := flag.String("cluster-token", getenv("AIDBG_K8S_CLUSTER_TOKEN", ""), "rotated per-cluster token")
 	kubeconfig := flag.String("kubeconfig", getenv("AIDBG_KUBECONFIG", ""), "optional kubeconfig path outside a cluster")
-	queueLimit := flag.Int("queue-limit", getenvInt("AIDBG_K8S_QUEUE_LIMIT", 2000), "maximum events held in memory")
+	queueLimit := flag.Int("queue-limit", getenvInt("AIDBG_K8S_QUEUE_LIMIT", 2000), "maximum events retained in the durable queue")
+	queuePath := flag.String("queue-path", getenv("AIDBG_K8S_QUEUE_PATH", "/var/lib/quellops-agent/events.json"), "durable event queue path")
+	tokenPath := flag.String("token-path", getenv("AIDBG_K8S_TOKEN_PATH", "/var/lib/quellops-agent/agent.token"), "per-cluster token path")
 	flag.Parse()
 
 	if *token == "" {
@@ -119,28 +129,55 @@ func main() {
 		*clusterName = "cluster-" + shortID(clusterID)
 	}
 
-	queue := newEventQueue(*queueLimit)
+	queue, err := openEventQueue(*queueLimit, *queuePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open durable event queue: %v\n", err)
+		os.Exit(1)
+	}
 	scope := newScopeState()
 	errors := &errorState{}
-	control := newControlClient(*backendURL, *token, 15*time.Second)
+	activeToken := *token
+	if *clusterToken != "" {
+		activeToken = *clusterToken
+	} else if savedToken, tokenErr := loadAgentToken(*tokenPath); tokenErr != nil {
+		fmt.Fprintf(os.Stderr, "load per-cluster token: %v\n", tokenErr)
+		os.Exit(1)
+	} else if savedToken != "" {
+		activeToken = savedToken
+	}
+	control := newControlClient(*backendURL, activeToken, 15*time.Second)
 	var sequence uint64
 	enqueue := func(event Event) {
-		if !scope.Allows(event.Namespace) {
+		if (event.Namespace == "" && !scope.Enabled()) || (event.Namespace != "" && !scope.Allows(event.Namespace)) {
 			return
 		}
 		event.AtUnixMs = time.Now().UnixMilli()
 		event.EventID = fmt.Sprintf("%s-%d-%d", clusterID, event.AtUnixMs, atomic.AddUint64(&sequence, 1))
 		event.Labels = safeLabels(event.Labels)
 		event.Message = truncate(event.Message, 2000)
-		queue.Push(event)
+		if err := queue.Push(event); err != nil {
+			errors.Set(fmt.Errorf("persist event queue: %w", err))
+		}
 	}
 
 	// Registration starts with an empty scope. Until the backend returns an
 	// administrator-approved namespace list, informer callbacks forward nothing.
-	if config, registerErr := registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors); registerErr != nil {
+	config, registerErr := registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors)
+	if registerErr != nil && activeToken != *token {
+		control.SetToken(*token)
+		config, registerErr = registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors)
+	}
+	if registerErr != nil {
 		errors.Set(registerErr)
 		fmt.Fprintf(os.Stderr, "initial registration failed: %v\n", registerErr)
 	} else {
+		if config.AgentToken != "" {
+			if tokenErr := saveAgentToken(*tokenPath, config.AgentToken); tokenErr != nil {
+				fmt.Fprintf(os.Stderr, "persist per-cluster token: %v\n", tokenErr)
+				os.Exit(1)
+			}
+			control.SetToken(config.AgentToken)
+		}
 		scope.Set(config.Namespaces)
 	}
 
@@ -154,7 +191,7 @@ func main() {
 	workers.Add(2)
 	go func() {
 		defer workers.Done()
-		controlLoop(ctx, control, clientset, clusterID, *clusterName, queue, scope, errors)
+		controlLoop(ctx, control, clientset, clusterID, *clusterName, queue, scope, errors, *tokenPath)
 	}()
 	go func() {
 		defer workers.Done()
@@ -223,6 +260,27 @@ func discover(ctx context.Context, client kubernetes.Interface) ([]string, []Wor
 	for _, item := range daemonSets.Items {
 		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "DaemonSet"})
 	}
+	jobs, err := client.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, nil, "", err
+	}
+	for _, item := range jobs.Items {
+		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Job"})
+	}
+	cronJobs, err := client.BatchV1().CronJobs("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, nil, "", err
+	}
+	for _, item := range cronJobs.Items {
+		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "CronJob"})
+	}
+	ingresses, err := client.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, nil, "", err
+	}
+	for _, item := range ingresses.Items {
+		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Ingress"})
+	}
 	sort.Slice(workloads, func(i, j int) bool {
 		if workloads[i].Namespace != workloads[j].Namespace {
 			return workloads[i].Namespace < workloads[j].Namespace
@@ -252,7 +310,7 @@ func registerCluster(ctx context.Context, control *controlClient, client kuberne
 	})
 }
 
-func controlLoop(ctx context.Context, control *controlClient, client kubernetes.Interface, clusterID, name string, queue *eventQueue, scope *scopeState, errors *errorState) {
+func controlLoop(ctx context.Context, control *controlClient, client kubernetes.Interface, clusterID, name string, queue *eventQueue, scope *scopeState, errors *errorState, tokenPath string) {
 	heartbeat := time.NewTicker(30 * time.Second)
 	discovery := time.NewTicker(5 * time.Minute)
 	defer heartbeat.Stop()
@@ -269,12 +327,26 @@ func controlLoop(ctx context.Context, control *controlClient, client kubernetes.
 				continue
 			}
 			scope.Set(config.Namespaces)
+			if config.AgentToken != "" {
+				if err := saveAgentToken(tokenPath, config.AgentToken); err != nil {
+					errors.Set(err)
+					continue
+				}
+				control.SetToken(config.AgentToken)
+			}
 			errors.Set(nil)
 		case <-discovery.C:
 			config, err := registerCluster(ctx, control, client, clusterID, name, queue, errors)
 			if err != nil {
 				errors.Set(err)
 				continue
+			}
+			if config.AgentToken != "" {
+				if err := saveAgentToken(tokenPath, config.AgentToken); err != nil {
+					errors.Set(err)
+					continue
+				}
+				control.SetToken(config.AgentToken)
 			}
 			scope.Set(config.Namespaces)
 			errors.Set(nil)
@@ -303,7 +375,10 @@ func deliveryLoop(ctx context.Context, control *controlClient, clusterID string,
 			}
 			continue
 		}
-		queue.Ack(len(batch))
+		if err := queue.Ack(len(batch)); err != nil {
+			errors.Set(fmt.Errorf("persist queue acknowledgement: %w", err))
+			continue
+		}
 		errors.Set(nil)
 		backoff = 200 * time.Millisecond
 	}
@@ -379,6 +454,122 @@ func installHandlers(factory informers.SharedInformerFactory, enqueue func(Event
 		enqueue(Event{Type: "k8s.hpa.changed", Namespace: meta.Namespace, Name: meta.Name, Kind: "HorizontalPodAutoscaler", Labels: meta.Labels,
 			Fields: map[string]string{"current_replicas": strconv.Itoa(int(hpa.Status.CurrentReplicas)), "desired_replicas": strconv.Itoa(int(hpa.Status.DesiredReplicas)), "scale_target": hpa.Spec.ScaleTargetRef.Name}})
 	}})
+
+	nodes := factory.Core().V1().Nodes().Informer()
+	_, _ = nodes.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+		oldNode, oldOK := oldObj.(*corev1.Node)
+		node, ok := newObj.(*corev1.Node)
+		if !ok || !oldOK {
+			return
+		}
+		oldReason, oldFields := nodeHealth(oldNode)
+		reason, fields := nodeHealth(node)
+		if reason == oldReason && fields["ready"] == oldFields["ready"] {
+			return
+		}
+		eventType := "k8s.node.recovered"
+		if reason != "" || fields["ready"] != "true" {
+			eventType = "k8s.node.pressure"
+		}
+		enqueue(Event{Type: eventType, Name: node.Name, Kind: "Node", Reason: reason, Labels: node.Labels, Fields: fields})
+	}})
+
+	jobs := factory.Batch().V1().Jobs().Informer()
+	_, _ = jobs.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+		oldJob, oldOK := oldObj.(*batchv1.Job)
+		job, ok := newObj.(*batchv1.Job)
+		if !ok || !oldOK || (oldJob.Status.Failed == job.Status.Failed && oldJob.Status.Succeeded == job.Status.Succeeded && oldJob.Status.Active == job.Status.Active) {
+			return
+		}
+		eventType, reason := "k8s.job.progress", ""
+		if job.Status.Failed > oldJob.Status.Failed {
+			eventType, reason = "k8s.job.failed", "Failed"
+		} else if job.Status.Succeeded > oldJob.Status.Succeeded {
+			eventType, reason = "k8s.job.completed", "Complete"
+		}
+		enqueue(Event{Type: eventType, Namespace: job.Namespace, Name: job.Name, Kind: "Job", Reason: reason, Labels: job.Labels, Fields: map[string]string{"active": strconv.Itoa(int(job.Status.Active)), "succeeded": strconv.Itoa(int(job.Status.Succeeded)), "failed": strconv.Itoa(int(job.Status.Failed))}})
+	}})
+
+	cronJobs := factory.Batch().V1().CronJobs().Informer()
+	_, _ = cronJobs.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+		oldCron, oldOK := oldObj.(*batchv1.CronJob)
+		cron, ok := newObj.(*batchv1.CronJob)
+		if !ok || !oldOK || (oldCron.Spec.Schedule == cron.Spec.Schedule && boolValue(oldCron.Spec.Suspend) == boolValue(cron.Spec.Suspend)) {
+			return
+		}
+		enqueue(Event{Type: "k8s.cronjob.changed", Namespace: cron.Namespace, Name: cron.Name, Kind: "CronJob", Labels: cron.Labels, Fields: map[string]string{"schedule": cron.Spec.Schedule, "suspended": strconv.FormatBool(boolValue(cron.Spec.Suspend))}})
+	}})
+
+	pvcs := factory.Core().V1().PersistentVolumeClaims().Informer()
+	_, _ = pvcs.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+		oldPVC, oldOK := oldObj.(*corev1.PersistentVolumeClaim)
+		pvc, ok := newObj.(*corev1.PersistentVolumeClaim)
+		if !ok || !oldOK || oldPVC.Status.Phase == pvc.Status.Phase {
+			return
+		}
+		eventType := "k8s.pvc.changed"
+		if pvc.Status.Phase == corev1.ClaimLost || pvc.Status.Phase == corev1.ClaimPending {
+			eventType = "k8s.pvc.failed"
+		}
+		enqueue(Event{Type: eventType, Namespace: pvc.Namespace, Name: pvc.Name, Kind: "PersistentVolumeClaim", Reason: string(pvc.Status.Phase), Labels: pvc.Labels, Fields: map[string]string{"phase": string(pvc.Status.Phase), "volume": pvc.Spec.VolumeName}})
+	}})
+
+	statefulSets := factory.Apps().V1().StatefulSets().Informer()
+	_, _ = statefulSets.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+		oldSet, oldOK := oldObj.(*appsv1.StatefulSet)
+		set, ok := newObj.(*appsv1.StatefulSet)
+		if !ok || !oldOK || (oldSet.Status.ReadyReplicas == set.Status.ReadyReplicas && oldSet.Status.UpdatedReplicas == set.Status.UpdatedReplicas && oldSet.Status.CurrentRevision == set.Status.CurrentRevision && oldSet.Status.UpdateRevision == set.Status.UpdateRevision) {
+			return
+		}
+		desired := int32(1)
+		if set.Spec.Replicas != nil {
+			desired = *set.Spec.Replicas
+		}
+		eventType := "k8s.statefulset.changed"
+		if set.Status.ReadyReplicas < desired {
+			eventType = "k8s.statefulset.degraded"
+		}
+		enqueue(Event{Type: eventType, Namespace: set.Namespace, Name: set.Name, Kind: "StatefulSet", Labels: set.Labels, Fields: map[string]string{"desired_replicas": strconv.Itoa(int(desired)), "ready_replicas": strconv.Itoa(int(set.Status.ReadyReplicas)), "updated_replicas": strconv.Itoa(int(set.Status.UpdatedReplicas)), "current_revision": set.Status.CurrentRevision, "update_revision": set.Status.UpdateRevision}})
+	}})
+
+	ingresses := factory.Networking().V1().Ingresses().Informer()
+	_, _ = ingresses.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+		oldIngress, oldOK := oldObj.(*networkingv1.Ingress)
+		ingress, ok := newObj.(*networkingv1.Ingress)
+		if !ok || !oldOK || (oldIngress.Generation == ingress.Generation && len(oldIngress.Status.LoadBalancer.Ingress) == len(ingress.Status.LoadBalancer.Ingress)) {
+			return
+		}
+		eventType := "k8s.ingress.changed"
+		if len(ingress.Status.LoadBalancer.Ingress) == 0 {
+			eventType = "k8s.ingress.unready"
+		}
+		enqueue(Event{Type: eventType, Namespace: ingress.Namespace, Name: ingress.Name, Kind: "Ingress", Labels: ingress.Labels, Fields: map[string]string{"generation": strconv.FormatInt(ingress.Generation, 10), "load_balancer_addresses": strconv.Itoa(len(ingress.Status.LoadBalancer.Ingress))}})
+	}})
+}
+
+func boolValue(value *bool) bool {
+	return value != nil && *value
+}
+
+func nodeHealth(node *corev1.Node) (string, map[string]string) {
+	fields := map[string]string{"ready": "unknown"}
+	reasons := make([]string, 0, 4)
+	for _, condition := range node.Status.Conditions {
+		switch condition.Type {
+		case corev1.NodeReady:
+			fields["ready"] = strconv.FormatBool(condition.Status == corev1.ConditionTrue)
+			if condition.Status != corev1.ConditionTrue && condition.Reason != "" {
+				reasons = append(reasons, condition.Reason)
+			}
+		case corev1.NodeMemoryPressure, corev1.NodeDiskPressure, corev1.NodePIDPressure, corev1.NodeNetworkUnavailable:
+			fields[string(condition.Type)] = strconv.FormatBool(condition.Status == corev1.ConditionTrue)
+			if condition.Status == corev1.ConditionTrue {
+				reasons = append(reasons, string(condition.Type))
+			}
+		}
+	}
+	sort.Strings(reasons)
+	return strings.Join(reasons, ","), fields
 }
 
 func usefulEventReason(reason string) bool {

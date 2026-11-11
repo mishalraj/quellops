@@ -5,14 +5,25 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 DOCKER=(docker)
 STORAGE="${AIDBG_STORAGE:-sqlite}"
-if [[ "${1:-}" == "--postgres" ]]; then
-  STORAGE="postgres"
-elif [[ -n "${1:-}" && "${1:-}" != "--sqlite" ]]; then
-  echo "Usage: ./install.sh [--sqlite|--postgres]"
-  exit 1
-fi
+EVENT_TRANSPORT="${AIDBG_EVENT_TRANSPORT:-database}"
+for argument in "$@"; do
+  case "$argument" in
+    --postgres) STORAGE="postgres" ;;
+    --sqlite) STORAGE="sqlite" ;;
+    --kafka) EVENT_TRANSPORT="kafka" ;;
+    --database-events) EVENT_TRANSPORT="database" ;;
+    *)
+      echo "Usage: ./install.sh [--sqlite|--postgres] [--kafka|--database-events]"
+      exit 1
+      ;;
+  esac
+done
 if [[ "$STORAGE" != "sqlite" && "$STORAGE" != "postgres" ]]; then
   echo "AIDBG_STORAGE must be sqlite or postgres"
+  exit 1
+fi
+if [[ "$EVENT_TRANSPORT" != "database" && "$EVENT_TRANSPORT" != "kafka" ]]; then
+  echo "AIDBG_EVENT_TRANSPORT must be database or kafka"
   exit 1
 fi
 
@@ -98,12 +109,22 @@ if ! grep -q '^AIDBG_POSTGRES_PASSWORD=' .env; then
   printf '\nAIDBG_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> .env
 fi
 POSTGRES_PASSWORD="$(sed -n 's/^AIDBG_POSTGRES_PASSWORD=//p' .env | tail -n 1)"
-grep -v '^AIDBG_CONTROL_DATABASE_URL=' .env > .env.tmp || true
+grep -Ev '^(AIDBG_CONTROL_DATABASE_URL|AIDBG_EVENT_TRANSPORT|AIDBG_KAFKA_BOOTSTRAP_SERVERS|AIDBG_KAFKA_K8S_TOPIC|AIDBG_KAFKA_CONSUMER_GROUP|AIDBG_KAFKA_CONSUMER_EMBEDDED|AIDBG_INCIDENT_RETENTION)=' .env > .env.tmp || true
 if [[ "$STORAGE" == "postgres" ]]; then
   printf 'AIDBG_CONTROL_DATABASE_URL=postgresql://aidbg:%s@aidbg-postgres:5432/aidbg\n' "$POSTGRES_PASSWORD" >> .env.tmp
 else
   printf 'AIDBG_CONTROL_DATABASE_URL=\n' >> .env.tmp
 fi
+printf 'AIDBG_EVENT_TRANSPORT=%s\n' "$EVENT_TRANSPORT" >> .env.tmp
+if [[ "$EVENT_TRANSPORT" == "kafka" ]]; then
+  printf 'AIDBG_KAFKA_BOOTSTRAP_SERVERS=quellops-redpanda:9092\n' >> .env.tmp
+else
+  printf 'AIDBG_KAFKA_BOOTSTRAP_SERVERS=\n' >> .env.tmp
+fi
+printf 'AIDBG_KAFKA_K8S_TOPIC=quellops.kubernetes.events.v1\n' >> .env.tmp
+printf 'AIDBG_KAFKA_CONSUMER_GROUP=quellops-central-v1\n' >> .env.tmp
+printf 'AIDBG_KAFKA_CONSUMER_EMBEDDED=false\n' >> .env.tmp
+printf 'AIDBG_INCIDENT_RETENTION=500\n' >> .env.tmp
 mv .env.tmp .env
 chmod 600 .env
 
@@ -111,9 +132,12 @@ COMPOSE_PROFILES=(--profile logs)
 if [[ "$STORAGE" == "postgres" ]]; then
   COMPOSE_PROFILES+=(--profile postgres)
 fi
+if [[ "$EVENT_TRANSPORT" == "kafka" ]]; then
+  COMPOSE_PROFILES+=(--profile kafka)
+fi
 "${DOCKER[@]}" compose "${COMPOSE_PROFILES[@]}" up -d --build
 
-echo "Waiting for aidbg..."
+echo "Waiting for QuellOps..."
 for _ in $(seq 1 60); do
   if curl --fail --silent http://127.0.0.1:8088/healthz >/dev/null; then
     break
@@ -126,11 +150,12 @@ curl --fail --silent http://127.0.0.1:8088/healthz >/dev/null || {
 }
 
 ADMIN_TOKEN="$(sed -n 's/^AIDBG_ADMIN_API_TOKEN=//p' .env)"
-echo "aidbg is ready: http://127.0.0.1:8088/ui/"
+echo "QuellOps is ready: http://127.0.0.1:8088/ui/"
 echo "Logs setup: http://127.0.0.1:8088/ui/logs.html"
 echo "Kubernetes setup: http://127.0.0.1:8088/ui/kubernetes.html"
 echo "Administrator token: $ADMIN_TOKEN"
 echo "Control storage: $STORAGE"
+echo "Event transport: $EVENT_TRANSPORT"
 
 case "$(uname -s)" in
   Darwin) open http://127.0.0.1:8088/ui/logs.html ;;

@@ -1,6 +1,6 @@
 name: 01_deploy_latency
 description: Roll catalog with injected latency after deploy.
-namespace: aidbg-demo
+namespace: quellops-demo
 target:
   deployment: catalog
 inject:

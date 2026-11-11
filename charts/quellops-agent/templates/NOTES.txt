@@ -1,0 +1,5 @@
+The QuellOps agent is installed for cluster {{ .Values.clusterID }}.
+
+The first successful registration exchanges the bootstrap token for a unique
+cluster token. That token and the unsent event queue are saved on the agent PVC.
+

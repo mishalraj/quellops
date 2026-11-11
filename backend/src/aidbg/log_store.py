@@ -68,7 +68,15 @@ class LogSourceStore:
                     last_bytes INTEGER NOT NULL DEFAULT 0,
                     lease_owner TEXT,
                     lease_until_unix_s REAL,
-                    consecutive_failures INTEGER NOT NULL DEFAULT 0
+                    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                    total_runs INTEGER NOT NULL DEFAULT 0,
+                    total_failures INTEGER NOT NULL DEFAULT 0,
+                    total_requests INTEGER NOT NULL DEFAULT 0,
+                    total_bytes INTEGER NOT NULL DEFAULT 0,
+                    total_records INTEGER NOT NULL DEFAULT 0,
+                    total_throttles INTEGER NOT NULL DEFAULT 0,
+                    last_cost_usd REAL NOT NULL DEFAULT 0,
+                    estimated_cost_usd REAL NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -80,6 +88,14 @@ class LogSourceStore:
                 ("lease_owner", "TEXT"),
                 ("lease_until_unix_s", "REAL"),
                 ("consecutive_failures", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_runs", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_failures", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_requests", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_bytes", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_records", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_throttles", "INTEGER NOT NULL DEFAULT 0"),
+                ("last_cost_usd", "REAL NOT NULL DEFAULT 0"),
+                ("estimated_cost_usd", "REAL NOT NULL DEFAULT 0"),
             ):
                 if column not in watcher_columns:
                     connection.execute(
@@ -230,6 +246,14 @@ class LogSourceStore:
             "last_requests": row["last_requests"],
             "last_bytes": row["last_bytes"],
             "consecutive_failures": row["consecutive_failures"],
+            "total_runs": row["total_runs"],
+            "total_failures": row["total_failures"],
+            "total_requests": row["total_requests"],
+            "total_bytes": row["total_bytes"],
+            "total_records": row["total_records"],
+            "total_throttles": row["total_throttles"],
+            "last_cost_usd": row["last_cost_usd"],
+            "estimated_cost_usd": row["estimated_cost_usd"],
         }
 
     def list_watchers(self) -> list[dict]:
@@ -366,19 +390,10 @@ class LogSourceStore:
         records: int,
         requests: int,
         bytes_received: int,
+        cost_usd: float = 0,
         owner: str | None = None,
     ) -> None:
         owner_clause = " AND lease_owner = ?" if owner else ""
-        parameters = (
-            checkpoint,
-            completed,
-            next_run,
-            records,
-            requests,
-            bytes_received,
-            name,
-            *((owner,) if owner else ()),
-        )
         with self._connect() as connection:
             connection.execute(
                 """
@@ -386,11 +401,19 @@ class LogSourceStore:
                     checkpoint_unix_s = ?, last_completed_unix_s = ?,
                     next_run_unix_s = ?, last_error = NULL,
                     last_records = ?, last_requests = ?, last_bytes = ?,
+                    last_cost_usd = ?, total_runs = total_runs + 1,
+                    total_requests = total_requests + ?, total_bytes = total_bytes + ?,
+                    total_records = total_records + ?,
+                    estimated_cost_usd = estimated_cost_usd + ?,
                     consecutive_failures = 0, lease_owner = NULL,
                     lease_until_unix_s = NULL
                 WHERE source_name = ?
                 """ + owner_clause,
-                parameters,
+                (
+                    checkpoint, completed, next_run, records, requests, bytes_received,
+                    cost_usd, requests, bytes_received, records, cost_usd, name,
+                    *((owner,) if owner else ()),
+                ),
             )
 
     def watcher_failed(
@@ -403,10 +426,17 @@ class LogSourceStore:
                 UPDATE log_watchers
                 SET last_error = ?, next_run_unix_s = ?,
                     consecutive_failures = consecutive_failures + 1,
+                    total_runs = total_runs + 1,
+                    total_failures = total_failures + 1,
+                    total_throttles = total_throttles + ?,
                     lease_owner = NULL, lease_until_unix_s = NULL
                 WHERE source_name = ?
                 """ + owner_clause,
-                (error[:1000], next_run, name, *((owner,) if owner else ())),
+                (
+                    error[:1000], next_run,
+                    int("429" in error or "throttl" in error.lower()),
+                    name, *((owner,) if owner else ()),
+                ),
             )
 
     def reset_watcher_checkpoint(self, name: str) -> None:
@@ -535,7 +565,15 @@ class PostgresLogSourceStore(LogSourceStore):
                     last_bytes BIGINT NOT NULL DEFAULT 0,
                     lease_owner TEXT,
                     lease_until_unix_s DOUBLE PRECISION,
-                    consecutive_failures INTEGER NOT NULL DEFAULT 0
+                    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                    total_runs BIGINT NOT NULL DEFAULT 0,
+                    total_failures BIGINT NOT NULL DEFAULT 0,
+                    total_requests BIGINT NOT NULL DEFAULT 0,
+                    total_bytes BIGINT NOT NULL DEFAULT 0,
+                    total_records BIGINT NOT NULL DEFAULT 0,
+                    total_throttles BIGINT NOT NULL DEFAULT 0,
+                    last_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -543,6 +581,14 @@ class PostgresLogSourceStore(LogSourceStore):
                 ("lease_owner", "TEXT"),
                 ("lease_until_unix_s", "DOUBLE PRECISION"),
                 ("consecutive_failures", "INTEGER NOT NULL DEFAULT 0"),
+                ("total_runs", "BIGINT NOT NULL DEFAULT 0"),
+                ("total_failures", "BIGINT NOT NULL DEFAULT 0"),
+                ("total_requests", "BIGINT NOT NULL DEFAULT 0"),
+                ("total_bytes", "BIGINT NOT NULL DEFAULT 0"),
+                ("total_records", "BIGINT NOT NULL DEFAULT 0"),
+                ("total_throttles", "BIGINT NOT NULL DEFAULT 0"),
+                ("last_cost_usd", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+                ("estimated_cost_usd", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
             ):
                 connection.execute(
                     f"ALTER TABLE log_watchers ADD COLUMN IF NOT EXISTS {column} {definition}"
@@ -744,6 +790,7 @@ class PostgresLogSourceStore(LogSourceStore):
         records: int,
         requests: int,
         bytes_received: int,
+        cost_usd: float = 0,
         owner: str | None = None,
     ) -> None:
         owner_clause = " AND lease_owner = %s" if owner else ""
@@ -754,6 +801,10 @@ class PostgresLogSourceStore(LogSourceStore):
                     checkpoint_unix_s = %s, last_completed_unix_s = %s,
                     next_run_unix_s = %s, last_error = NULL,
                     last_records = %s, last_requests = %s, last_bytes = %s,
+                    last_cost_usd = %s, total_runs = total_runs + 1,
+                    total_requests = total_requests + %s, total_bytes = total_bytes + %s,
+                    total_records = total_records + %s,
+                    estimated_cost_usd = estimated_cost_usd + %s,
                     consecutive_failures = 0, lease_owner = NULL,
                     lease_until_unix_s = NULL
                 WHERE source_name = %s
@@ -765,6 +816,11 @@ class PostgresLogSourceStore(LogSourceStore):
                     records,
                     requests,
                     bytes_received,
+                    cost_usd,
+                    requests,
+                    bytes_received,
+                    records,
+                    cost_usd,
                     name,
                     *((owner,) if owner else ()),
                 ),
@@ -780,10 +836,17 @@ class PostgresLogSourceStore(LogSourceStore):
                 UPDATE log_watchers
                 SET last_error = %s, next_run_unix_s = %s,
                     consecutive_failures = consecutive_failures + 1,
+                    total_runs = total_runs + 1,
+                    total_failures = total_failures + 1,
+                    total_throttles = total_throttles + %s,
                     lease_owner = NULL, lease_until_unix_s = NULL
                 WHERE source_name = %s
                 """ + owner_clause,
-                (error[:1000], next_run, name, *((owner,) if owner else ())),
+                (
+                    error[:1000], next_run,
+                    int("429" in error or "throttl" in error.lower()),
+                    name, *((owner,) if owner else ()),
+                ),
             )
 
     def reset_watcher_checkpoint(self, name: str) -> None:
