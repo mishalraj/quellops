@@ -5,7 +5,7 @@ grpcio==1.74.0
 protobuf==6.33.5
 opentelemetry-proto==1.45.2
 pydantic==2.11.4
-python-dotenv==1.2.2
+python-dotenv==1.2.4
 openai==1.79.0
 PyYAML==6.0.2
 cryptography==50.0.0
