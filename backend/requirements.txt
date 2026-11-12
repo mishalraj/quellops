@@ -10,4 +10,4 @@ openai==1.79.0
 PyYAML==6.0.2
 cryptography==50.0.0
 psycopg[binary]>=3.2,<4
-confluent-kafka>=2.6,<3
+confluent-kafka>=2.16.1,<3
