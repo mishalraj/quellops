@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import random
 import threading
 import time
-import random
 import uuid
 from collections.abc import Callable
 
@@ -42,9 +42,7 @@ class LogWatcher:
         if self._thread is not None:
             return
         self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._loop, name="aidbg-log-watcher", daemon=True
-        )
+        self._thread = threading.Thread(target=self._loop, name="aidbg-log-watcher", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -65,9 +63,7 @@ class LogWatcher:
                 if self._stop.is_set():
                     break
                 try:
-                    self._run_once(
-                        watcher["source_name"], now=time.time(), claimed=True
-                    )
+                    self._run_once(watcher["source_name"], now=time.time(), claimed=True)
                 except Exception as exc:
                     try:
                         failures = int(watcher.get("consecutive_failures") or 0) + 1
@@ -89,9 +85,7 @@ class LogWatcher:
                 return {"ok": False, "source": name, "error": "watcher is already running"}
             return self._run_once(name, now=now, claimed=True)
 
-    def _run_once(
-        self, name: str, *, now: float | None = None, claimed: bool = False
-    ) -> dict:
+    def _run_once(self, name: str, *, now: float | None = None, claimed: bool = False) -> dict:
         now = time.time() if now is None else now
         watcher = self.store.get_watcher(name)
         source = self.store.get(name)

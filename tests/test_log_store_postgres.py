@@ -9,7 +9,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend" / "src"))
 
 from aidbg.log_store import PostgresLogSourceStore, create_log_source_store
 
-
 POSTGRES_URL = os.getenv("AIDBG_TEST_POSTGRES_URL", "")
 
 
@@ -46,7 +45,9 @@ class PostgresLogStoreTests(unittest.TestCase):
                 "SELECT secret_nonce, secret_ciphertext FROM log_sources WHERE name = %s",
                 (self.name,),
             ).fetchone()
-        self.assertNotIn(b"plain-secret", bytes(row["secret_nonce"]) + bytes(row["secret_ciphertext"]))
+        self.assertNotIn(
+            b"plain-secret", bytes(row["secret_nonce"]) + bytes(row["secret_ciphertext"])
+        )
 
     def test_replica_safe_watcher_claim_and_checkpoint(self):
         self.store.upsert_watcher(

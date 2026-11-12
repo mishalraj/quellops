@@ -175,9 +175,13 @@ If the service was offline for longer than one allowed scope, the watcher catche
 one `max_scope_s` chunk at a time. This keeps each provider query bounded without
 skipping the gap.
 
-The gRPC connection is plaintext for the internal Docker network. Keep port `8091`
-private. A production deployment should use network policy or a service mesh for
-transport encryption and identity.
+The gRPC port stays private on the Docker network. For a connection that crosses a
+trusted network boundary, set `AIDBG_LOG_TLS_CERT` and `AIDBG_LOG_TLS_KEY` on the Go
+service and mount those files. Mount the issuing CA into the backend and set
+`AIDBG_LOG_TLS_CA`; set `AIDBG_LOG_TLS_SERVER_NAME` when the certificate name differs
+from the gRPC target. Keep the bearer token even when TLS is enabled. When TLS is not
+configured, isolate port `8091` with a container network, Kubernetes NetworkPolicy, or
+service mesh.
 
 ## Adaptive limits
 

@@ -1,4 +1,5 @@
 """HTTP boundary for the UI; all log work is delegated to the Go gRPC service."""
+
 from __future__ import annotations
 
 import hmac
@@ -24,8 +25,18 @@ class InvestigateRequest(BaseModel):
     target_records: int | None = Field(default=None, ge=1, le=50000)
 
 
-def router(target: str, service_token: str, api_token: str) -> APIRouter:
-    client = LogClient(target, service_token) if target and service_token else None
+def router(
+    target: str,
+    service_token: str,
+    api_token: str,
+    tls_ca: str = "",
+    tls_server_name: str = "",
+) -> APIRouter:
+    client = (
+        LogClient(target, service_token, tls_ca=tls_ca, tls_server_name=tls_server_name)
+        if target and service_token
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -38,9 +49,7 @@ def router(target: str, service_token: str, api_token: str) -> APIRouter:
     def authorize(authorization: str | None) -> None:
         if client is None or not api_token:
             raise HTTPException(503, "Log API disabled; configure the Go logs service")
-        if not authorization or not hmac.compare_digest(
-            authorization, "Bearer " + api_token
-        ):
+        if not authorization or not hmac.compare_digest(authorization, "Bearer " + api_token):
             raise HTTPException(401, "Log API authentication required")
 
     def call(operation):
@@ -66,9 +75,7 @@ def router(target: str, service_token: str, api_token: str) -> APIRouter:
     ):
         authorize(authorization)
         return call(
-            lambda: client.investigate(
-                body.source, body.start, body.end, body.target_records
-            )
+            lambda: client.investigate(body.source, body.start, body.end, body.target_records)
         )
 
     return routes

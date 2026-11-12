@@ -98,9 +98,7 @@ class LogSourceStore:
                 ("estimated_cost_usd", "REAL NOT NULL DEFAULT 0"),
             ):
                 if column not in watcher_columns:
-                    connection.execute(
-                        f"ALTER TABLE log_watchers ADD COLUMN {column} {definition}"
-                    )
+                    connection.execute(f"ALTER TABLE log_watchers ADD COLUMN {column} {definition}")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS log_detections (
@@ -132,9 +130,7 @@ class LogSourceStore:
 
     def _encrypt(self, name: str, credentials: dict[str, str]) -> tuple[bytes, bytes]:
         nonce = os.urandom(12)
-        cleartext = json.dumps(
-            credentials, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        cleartext = json.dumps(credentials, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return nonce, self._cipher.encrypt(nonce, cleartext, name.encode("utf-8"))
 
     def _decrypt(self, row: sqlite3.Row) -> dict[str, str]:
@@ -145,8 +141,7 @@ class LogSourceStore:
         )
         value = json.loads(cleartext)
         if not isinstance(value, dict) or not all(
-            isinstance(key, str) and isinstance(item, str)
-            for key, item in value.items()
+            isinstance(key, str) and isinstance(item, str) for key, item in value.items()
         ):
             raise ValueError("stored credentials are invalid")
         return value
@@ -165,16 +160,12 @@ class LogSourceStore:
 
     def list(self) -> list[dict]:
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM log_sources ORDER BY name"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM log_sources ORDER BY name").fetchall()
         return [self._public(row, self._decrypt(row)) for row in rows]
 
     def get(self, name: str) -> dict | None:
         with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM log_sources WHERE name = ?", (name,)
-            ).fetchone()
+            row = connection.execute("SELECT * FROM log_sources WHERE name = ?", (name,)).fetchone()
         if row is None:
             return None
         credentials = self._decrypt(row)
@@ -218,15 +209,9 @@ class LogSourceStore:
 
     def delete(self, name: str) -> bool:
         with self._connect() as connection:
-            connection.execute(
-                "DELETE FROM log_watchers WHERE source_name = ?", (name,)
-            )
-            connection.execute(
-                "DELETE FROM log_detections WHERE source_name = ?", (name,)
-            )
-            cursor = connection.execute(
-                "DELETE FROM log_sources WHERE name = ?", (name,)
-            )
+            connection.execute("DELETE FROM log_watchers WHERE source_name = ?", (name,))
+            connection.execute("DELETE FROM log_detections WHERE source_name = ?", (name,))
+            cursor = connection.execute("DELETE FROM log_sources WHERE name = ?", (name,))
         return cursor.rowcount > 0
 
     @staticmethod
@@ -258,9 +243,7 @@ class LogSourceStore:
 
     def list_watchers(self) -> list[dict]:
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM log_watchers ORDER BY source_name"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM log_watchers ORDER BY source_name").fetchall()
         return [self._watcher(row) for row in rows]
 
     def get_watcher(self, name: str) -> dict | None:
@@ -354,9 +337,7 @@ class LogSourceStore:
             ).fetchall()
         return [self._watcher(row) for row in claimed]
 
-    def claim_watcher(
-        self, name: str, now: float, owner: str, *, lease_s: float = 120
-    ) -> bool:
+    def claim_watcher(self, name: str, now: float, owner: str, *, lease_s: float = 120) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -408,10 +389,21 @@ class LogSourceStore:
                     consecutive_failures = 0, lease_owner = NULL,
                     lease_until_unix_s = NULL
                 WHERE source_name = ?
-                """ + owner_clause,
+                """
+                + owner_clause,
                 (
-                    checkpoint, completed, next_run, records, requests, bytes_received,
-                    cost_usd, requests, bytes_received, records, cost_usd, name,
+                    checkpoint,
+                    completed,
+                    next_run,
+                    records,
+                    requests,
+                    bytes_received,
+                    cost_usd,
+                    requests,
+                    bytes_received,
+                    records,
+                    cost_usd,
+                    name,
                     *((owner,) if owner else ()),
                 ),
             )
@@ -431,11 +423,14 @@ class LogSourceStore:
                     total_throttles = total_throttles + ?,
                     lease_owner = NULL, lease_until_unix_s = NULL
                 WHERE source_name = ?
-                """ + owner_clause,
+                """
+                + owner_clause,
                 (
-                    error[:1000], next_run,
+                    error[:1000],
+                    next_run,
                     int("429" in error or "throttl" in error.lower()),
-                    name, *((owner,) if owner else ()),
+                    name,
+                    *((owner,) if owner else ()),
                 ),
             )
 
@@ -459,8 +454,7 @@ class LogSourceStore:
         encoded = json.dumps(signal, sort_keys=True, separators=(",", ":"))
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO log_detections(source_name, at_unix_ms, signal_json) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO log_detections(source_name, at_unix_ms, signal_json) VALUES (?, ?, ?)",
                 (source, at_unix_ms, encoded),
             )
             connection.execute(
@@ -474,9 +468,7 @@ class LogSourceStore:
                 (source, source),
             )
 
-    def list_detections(
-        self, source_name: str | None = None, *, limit: int = 100
-    ) -> list[dict]:
+    def list_detections(self, source_name: str | None = None, *, limit: int = 100) -> list[dict]:
         limit = max(1, min(limit, 1000))
         with self._connect() as connection:
             if source_name:
@@ -512,9 +504,7 @@ class PostgresLogSourceStore(LogSourceStore):
             import psycopg
             from psycopg.rows import dict_row
         except ImportError as exc:
-            raise RuntimeError(
-                "PostgreSQL storage requires the psycopg package"
-            ) from exc
+            raise RuntimeError("PostgreSQL storage requires the psycopg package") from exc
         self._psycopg = psycopg
         self._dict_row = dict_row
 
@@ -544,8 +534,7 @@ class PostgresLogSourceStore(LogSourceStore):
                 """
             )
             connection.execute(
-                "ALTER TABLE log_sources ADD COLUMN IF NOT EXISTS "
-                "service TEXT NOT NULL DEFAULT ''"
+                "ALTER TABLE log_sources ADD COLUMN IF NOT EXISTS service TEXT NOT NULL DEFAULT ''"
             )
             connection.execute(
                 """
@@ -610,9 +599,7 @@ class PostgresLogSourceStore(LogSourceStore):
 
     def list(self) -> list[dict]:
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM log_sources ORDER BY name"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM log_sources ORDER BY name").fetchall()
         return [self._public(row, self._decrypt(row)) for row in rows]
 
     def get(self, name: str) -> dict | None:
@@ -663,16 +650,12 @@ class PostgresLogSourceStore(LogSourceStore):
 
     def delete(self, name: str) -> bool:
         with self._connect() as connection:
-            cursor = connection.execute(
-                "DELETE FROM log_sources WHERE name = %s", (name,)
-            )
+            cursor = connection.execute("DELETE FROM log_sources WHERE name = %s", (name,))
         return cursor.rowcount > 0
 
     def list_watchers(self) -> list[dict]:
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM log_watchers ORDER BY source_name"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM log_watchers ORDER BY source_name").fetchall()
         return [self._watcher(row) for row in rows]
 
     def get_watcher(self, name: str) -> dict | None:
@@ -754,9 +737,7 @@ class PostgresLogSourceStore(LogSourceStore):
         rows.sort(key=lambda row: row["source_name"])
         return [self._watcher(row) for row in rows]
 
-    def claim_watcher(
-        self, name: str, now: float, owner: str, *, lease_s: float = 120
-    ) -> bool:
+    def claim_watcher(self, name: str, now: float, owner: str, *, lease_s: float = 120) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -808,7 +789,8 @@ class PostgresLogSourceStore(LogSourceStore):
                     consecutive_failures = 0, lease_owner = NULL,
                     lease_until_unix_s = NULL
                 WHERE source_name = %s
-                """ + owner_clause,
+                """
+                + owner_clause,
                 (
                     checkpoint,
                     completed,
@@ -841,11 +823,14 @@ class PostgresLogSourceStore(LogSourceStore):
                     total_throttles = total_throttles + %s,
                     lease_owner = NULL, lease_until_unix_s = NULL
                 WHERE source_name = %s
-                """ + owner_clause,
+                """
+                + owner_clause,
                 (
-                    error[:1000], next_run,
+                    error[:1000],
+                    next_run,
                     int("429" in error or "throttl" in error.lower()),
-                    name, *((owner,) if owner else ()),
+                    name,
+                    *((owner,) if owner else ()),
                 ),
             )
 
@@ -884,9 +869,7 @@ class PostgresLogSourceStore(LogSourceStore):
                 (source, source),
             )
 
-    def list_detections(
-        self, source_name: str | None = None, *, limit: int = 100
-    ) -> list[dict]:
+    def list_detections(self, source_name: str | None = None, *, limit: int = 100) -> list[dict]:
         limit = max(1, min(limit, 1000))
         with self._connect() as connection:
             if source_name:
@@ -904,9 +887,7 @@ class PostgresLogSourceStore(LogSourceStore):
         return [json.loads(row["signal_json"]) for row in rows]
 
 
-def create_log_source_store(
-    path: str, master_key: str, database_url: str = ""
-) -> LogSourceStore:
+def create_log_source_store(path: str, master_key: str, database_url: str = "") -> LogSourceStore:
     if database_url:
         return PostgresLogSourceStore(database_url, master_key)
     return LogSourceStore(path, master_key)

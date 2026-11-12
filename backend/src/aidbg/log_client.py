@@ -16,11 +16,27 @@ class LogClientError(Exception):
 class LogClient:
     """Thin central-layer client. Provider knowledge stays in the Go service."""
 
-    def __init__(self, target: str, token: str, timeout_s: float = 65):
+    def __init__(
+        self,
+        target: str,
+        token: str,
+        timeout_s: float = 65,
+        *,
+        tls_ca: str = "",
+        tls_server_name: str = "",
+    ):
         self.target = target
         self.token = token
         self.timeout_s = timeout_s
-        self._channel = grpc.insecure_channel(target)
+        if tls_ca:
+            with open(tls_ca, "rb") as certificate:
+                credentials = grpc.ssl_channel_credentials(certificate.read())
+            options = (
+                (("grpc.ssl_target_name_override", tls_server_name),) if tls_server_name else None
+            )
+            self._channel = grpc.secure_channel(target, credentials, options=options)
+        else:
+            self._channel = grpc.insecure_channel(target)
         self._stub = logs_pb2_grpc.LogsServiceStub(self._channel)
 
     @property
@@ -39,16 +55,12 @@ class LogClient:
         if "bytes_received" in result:
             result["bytes_received"] = int(result["bytes_received"])
         if "usage" in result and "bytes_received" in result["usage"]:
-            result["usage"]["bytes_received"] = int(
-                result["usage"]["bytes_received"]
-            )
+            result["usage"]["bytes_received"] = int(result["usage"]["bytes_received"])
         return result
 
     def _call(self, method, request) -> dict:
         try:
-            return self._dict(
-                method(request, metadata=self.metadata, timeout=self.timeout_s)
-            )
+            return self._dict(method(request, metadata=self.metadata, timeout=self.timeout_s))
         except grpc.RpcError as exc:
             unavailable = exc.code() in {
                 grpc.StatusCode.UNAVAILABLE,
@@ -113,7 +125,11 @@ class LogClient:
         )
 
     def investigate(
-        self, source: str, start: float, end: float, target_records: int | None,
+        self,
+        source: str,
+        start: float,
+        end: float,
+        target_records: int | None,
         focus: str = "",
     ) -> dict:
         request = logs_pb2.InvestigateRequest(

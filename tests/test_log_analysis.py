@@ -1,9 +1,9 @@
-import sys
-import time
-import unittest
 import base64
 import os
+import sys
 import tempfile
+import time
+import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -132,12 +132,14 @@ class LogSignalAnalyzerTests(unittest.TestCase):
             history = LogSourceStore(path, key)
             history.initialize()
             analyzer = LogSignalAnalyzer(self.signals, self.client, history_store=history)
-            analyzer.observe({
-                "ok": False,
-                "source": "prod",
-                "provider": "loki",
-                "error": "provider unavailable",
-            })
+            analyzer.observe(
+                {
+                    "ok": False,
+                    "source": "prod",
+                    "provider": "loki",
+                    "error": "provider unavailable",
+                }
+            )
             reopened = LogSourceStore(path, key)
             reopened.initialize()
             saved = reopened.list_detections("prod")
@@ -172,7 +174,9 @@ class LogIncidentTests(unittest.TestCase):
         incident = store.build_incident(300, 900)
         self.assertEqual(incident["top_causes"][0]["type"], "log_error_pattern")
         self.assertEqual(incident["log_evidence"][0]["source"], "prod")
-        self.assertEqual(store.evidence_bundle("checkout", 300, 900)["log_evidence"][0]["source"], "prod")
+        self.assertEqual(
+            store.evidence_bundle("checkout", 300, 900)["log_evidence"][0]["source"], "prod"
+        )
 
     def test_only_consecutive_failures_create_unavailable_cause(self):
         store = SignalStore()

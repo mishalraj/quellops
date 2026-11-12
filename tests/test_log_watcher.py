@@ -1,9 +1,9 @@
 import base64
 import os
+import random
 import sys
 import tempfile
 import unittest
-import random
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -18,16 +18,14 @@ class LogWatcherTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         key = base64.b64encode(os.urandom(32)).decode("ascii")
-        self.store = LogSourceStore(
-            str(Path(self.directory.name) / "control.db"), key
-        )
+        self.store = LogSourceStore(str(Path(self.directory.name) / "control.db"), key)
         self.store.initialize()
         self.store.upsert(
             "prod",
             "loki",
             {
                 "url": "https://loki.example.com",
-                "query": "{app=\"api\"}",
+                "query": '{app="api"}',
                 "max_scope_s": 60,
                 "estimated_cost_per_1000_requests_usd": 5,
             },
@@ -52,7 +50,9 @@ class LogWatcherTests(unittest.TestCase):
             "records": [{"id": "1"}, {"id": "2"}],
             "usage": {"backend_requests": 3, "bytes_received": 400},
         }
-        result = LogWatcher(self.store, client, observer, random_source=random.Random(0)).run_once("prod", now=1000)
+        result = LogWatcher(self.store, client, observer, random_source=random.Random(0)).run_once(
+            "prod", now=1000
+        )
         self.assertTrue(result["ok"])
         self.assertFalse(result["caught_up"])
         client.fetch_complete.assert_called_once_with("prod", 875, 935)
@@ -84,7 +84,9 @@ class LogWatcherTests(unittest.TestCase):
         client = Mock()
         observer = Mock()
         client.fetch_complete.side_effect = LogClientError("provider unavailable")
-        result = LogWatcher(self.store, client, observer, random_source=random.Random(0)).run_once("prod", now=1000)
+        result = LogWatcher(self.store, client, observer, random_source=random.Random(0)).run_once(
+            "prod", now=1000
+        )
         self.assertFalse(result["ok"])
         saved = self.store.get_watcher("prod")
         self.assertEqual(saved["checkpoint_unix_s"], 900)
@@ -132,9 +134,7 @@ class LogWatcherTests(unittest.TestCase):
     def test_throttling_and_failure_totals_are_persisted(self):
         client = Mock()
         client.fetch_complete.side_effect = LogClientError("HTTP 429 throttled")
-        LogWatcher(self.store, client, random_source=random.Random(0)).run_once(
-            "prod", now=1000
-        )
+        LogWatcher(self.store, client, random_source=random.Random(0)).run_once("prod", now=1000)
         saved = self.store.get_watcher("prod")
         self.assertEqual(saved["total_runs"], 1)
         self.assertEqual(saved["total_failures"], 1)

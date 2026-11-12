@@ -65,4 +65,3 @@ func TestLiveProviders(t *testing.T) {
 		t.Skip(fmt.Sprintf("set one of QUELLOPS_LIVE_%s to run provider conformance", strings.ToUpper(strings.Join(providers, ", QUELLOPS_LIVE_"))))
 	}
 }
-

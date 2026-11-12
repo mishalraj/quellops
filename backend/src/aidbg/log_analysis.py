@@ -11,19 +11,33 @@ from .engine import LogSignal, SignalStore
 from .log_client import LogClient
 from .log_store import LogSourceStore
 
-
 ERROR_PATTERN = re.compile(
     r"\b(error|exception|timeout|timed out|failed|failure|fatal|panic|denied|unavailable|refused)\b",
     re.IGNORECASE,
 )
 SIGNAL_PATTERNS = {
     "timeout_pattern": re.compile(r"\b(timeout|timed out|deadline exceeded)\b", re.I),
-    "connection_pattern": re.compile(r"\b(connection (refused|reset)|unavailable|broken pipe|no route to host)\b", re.I),
-    "authentication_pattern": re.compile(r"\b(unauthorized|forbidden|permission denied|invalid (token|credential)|access denied)\b", re.I),
-    "rate_limit_pattern": re.compile(r"\b(rate.?limit|too many requests|throttl(ed|ing)|http 429)\b", re.I),
-    "resource_exhaustion_pattern": re.compile(r"\b(out of memory|oomkilled|oom killing|disk full|no space left|resource exhausted)\b", re.I),
-    "database_pattern": re.compile(r"\b(deadlock|connection pool exhausted|too many connections|lock wait timeout|query cancelled)\b", re.I),
-    "crash_pattern": re.compile(r"\b(panic|segmentation fault|crashloopbackoff|fatal|uncaught exception)\b", re.I),
+    "connection_pattern": re.compile(
+        r"\b(connection (refused|reset)|unavailable|broken pipe|no route to host)\b", re.I
+    ),
+    "authentication_pattern": re.compile(
+        r"\b(unauthorized|forbidden|permission denied|invalid (token|credential)|access denied)\b",
+        re.I,
+    ),
+    "rate_limit_pattern": re.compile(
+        r"\b(rate.?limit|too many requests|throttl(ed|ing)|http 429)\b", re.I
+    ),
+    "resource_exhaustion_pattern": re.compile(
+        r"\b(out of memory|oomkilled|oom killing|disk full|no space left|resource exhausted)\b",
+        re.I,
+    ),
+    "database_pattern": re.compile(
+        r"\b(deadlock|connection pool exhausted|too many connections|lock wait timeout|query cancelled)\b",
+        re.I,
+    ),
+    "crash_pattern": re.compile(
+        r"\b(panic|segmentation fault|crashloopbackoff|fatal|uncaught exception)\b", re.I
+    ),
 }
 FINGERPRINT_NOISE = re.compile(
     r"\b(?:[0-9a-f]{8}-[0-9a-f-]{27,}|0x[0-9a-f]+|\d+(?:\.\d+)*)\b", re.I

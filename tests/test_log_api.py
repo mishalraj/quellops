@@ -5,10 +5,9 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend" / "src"))
 
+from aidbg.log_api import router
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from aidbg.log_api import router
 
 
 class LogAPITests(unittest.TestCase):
@@ -21,9 +20,7 @@ class LogAPITests(unittest.TestCase):
     @patch("aidbg.log_api.LogClient")
     def test_auth_and_grpc_delegation(self, client_type):
         grpc_client = Mock()
-        grpc_client.list_sources.return_value = {
-            "sources": [{"name": "prod", "provider": "loki"}]
-        }
+        grpc_client.list_sources.return_value = {"sources": [{"name": "prod", "provider": "loki"}]}
         grpc_client.fetch.return_value = {"records": []}
         grpc_client.investigate.return_value = {
             "strategy": "expand_backwards",

@@ -15,30 +15,138 @@ from .log_client import LogClient, LogClientError
 from .log_store import create_log_source_store
 from .log_watcher import LogWatcher
 
-
 COMMON_FIELDS = [
-    {"name": "redact_patterns", "label": "Sensitive data redaction", "type": "list", "advanced": True},
-    {"name": "initial_window_s", "label": "Initial window (seconds)", "type": "number", "default": 60, "advanced": True},
-    {"name": "initial_records", "label": "Initial record limit", "type": "number", "default": 50, "advanced": True},
-    {"name": "target_records", "label": "Target records", "type": "number", "default": 100, "advanced": True},
-    {"name": "max_window_s", "label": "Maximum request window (seconds)", "type": "number", "default": 900, "advanced": True},
-    {"name": "max_scope_s", "label": "Maximum investigation scope (seconds)", "type": "number", "default": 3600, "advanced": True},
-    {"name": "max_records", "label": "Maximum records per request", "type": "number", "default": 500, "advanced": True},
-    {"name": "max_bytes", "label": "Maximum bytes per request", "type": "number", "default": 2097152, "advanced": True},
-    {"name": "timeout_s", "label": "Request timeout (seconds)", "type": "number", "default": 15, "advanced": True},
-    {"name": "max_pages", "label": "Maximum pages per request", "type": "number", "default": 5, "advanced": True},
-    {"name": "growth_factor", "label": "Adaptive growth factor", "type": "number", "default": 2, "advanced": True},
-    {"name": "min_split_window_s", "label": "Minimum split window (seconds)", "type": "number", "default": 5, "advanced": True},
-    {"name": "max_cycle_fetches", "label": "Maximum fetches per cycle", "type": "number", "default": 20, "advanced": True},
-    {"name": "max_cycle_requests", "label": "Maximum provider requests per cycle", "type": "number", "default": 50, "advanced": True},
-    {"name": "max_cycle_bytes", "label": "Maximum bytes per cycle", "type": "number", "default": 16777216, "advanced": True},
-    {"name": "max_cycle_records", "label": "Maximum records per cycle", "type": "number", "default": 5000, "advanced": True},
-    {"name": "max_cycle_seconds", "label": "Maximum cycle time (seconds)", "type": "number", "default": 60, "advanced": True},
-    {"name": "estimated_cost_per_1000_requests_usd", "label": "Estimated provider cost per 1,000 requests (USD)", "type": "number", "default": 0, "advanced": True},
+    {
+        "name": "redact_patterns",
+        "label": "Sensitive data redaction",
+        "type": "list",
+        "advanced": True,
+    },
+    {
+        "name": "initial_window_s",
+        "label": "Initial window (seconds)",
+        "type": "number",
+        "default": 60,
+        "advanced": True,
+    },
+    {
+        "name": "initial_records",
+        "label": "Initial record limit",
+        "type": "number",
+        "default": 50,
+        "advanced": True,
+    },
+    {
+        "name": "target_records",
+        "label": "Target records",
+        "type": "number",
+        "default": 100,
+        "advanced": True,
+    },
+    {
+        "name": "max_window_s",
+        "label": "Maximum request window (seconds)",
+        "type": "number",
+        "default": 900,
+        "advanced": True,
+    },
+    {
+        "name": "max_scope_s",
+        "label": "Maximum investigation scope (seconds)",
+        "type": "number",
+        "default": 3600,
+        "advanced": True,
+    },
+    {
+        "name": "max_records",
+        "label": "Maximum records per request",
+        "type": "number",
+        "default": 500,
+        "advanced": True,
+    },
+    {
+        "name": "max_bytes",
+        "label": "Maximum bytes per request",
+        "type": "number",
+        "default": 2097152,
+        "advanced": True,
+    },
+    {
+        "name": "timeout_s",
+        "label": "Request timeout (seconds)",
+        "type": "number",
+        "default": 15,
+        "advanced": True,
+    },
+    {
+        "name": "max_pages",
+        "label": "Maximum pages per request",
+        "type": "number",
+        "default": 5,
+        "advanced": True,
+    },
+    {
+        "name": "growth_factor",
+        "label": "Adaptive growth factor",
+        "type": "number",
+        "default": 2,
+        "advanced": True,
+    },
+    {
+        "name": "min_split_window_s",
+        "label": "Minimum split window (seconds)",
+        "type": "number",
+        "default": 5,
+        "advanced": True,
+    },
+    {
+        "name": "max_cycle_fetches",
+        "label": "Maximum fetches per cycle",
+        "type": "number",
+        "default": 20,
+        "advanced": True,
+    },
+    {
+        "name": "max_cycle_requests",
+        "label": "Maximum provider requests per cycle",
+        "type": "number",
+        "default": 50,
+        "advanced": True,
+    },
+    {
+        "name": "max_cycle_bytes",
+        "label": "Maximum bytes per cycle",
+        "type": "number",
+        "default": 16777216,
+        "advanced": True,
+    },
+    {
+        "name": "max_cycle_records",
+        "label": "Maximum records per cycle",
+        "type": "number",
+        "default": 5000,
+        "advanced": True,
+    },
+    {
+        "name": "max_cycle_seconds",
+        "label": "Maximum cycle time (seconds)",
+        "type": "number",
+        "default": 60,
+        "advanced": True,
+    },
+    {
+        "name": "estimated_cost_per_1000_requests_usd",
+        "label": "Estimated provider cost per 1,000 requests (USD)",
+        "type": "number",
+        "default": 0,
+        "advanced": True,
+    },
 ]
 
 
-def field(name: str, label: str, *, required: bool = False, kind: str = "text", default=None) -> dict:
+def field(
+    name: str, label: str, *, required: bool = False, kind: str = "text", default=None
+) -> dict:
     result = {"name": name, "label": label, "type": kind, "required": required}
     if default is not None:
         result["default"] = default
@@ -53,46 +161,104 @@ PROVIDERS = {
     "loki": {
         "label": "Grafana Loki",
         "fields": [field("url", "Loki URL", required=True)],
-        "credentials": [secret("token", "Bearer token"), secret("username", "Basic auth username / instance ID"), secret("password", "Basic auth password / access token"), secret("header:X-Scope-OrgID", "Tenant ID")],
+        "credentials": [
+            secret("token", "Bearer token"),
+            secret("username", "Basic auth username / instance ID"),
+            secret("password", "Basic auth password / access token"),
+            secret("header:X-Scope-OrgID", "Tenant ID"),
+        ],
     },
     "splunk": {
         "label": "Splunk",
         "fields": [field("url", "Splunk management URL", required=True)],
-        "credentials": [secret("token", "Splunk token"), secret("username", "Username"), secret("password", "Password")],
+        "credentials": [
+            secret("token", "Splunk token"),
+            secret("username", "Username"),
+            secret("password", "Password"),
+        ],
     },
     "elasticsearch": {
         "label": "Elasticsearch",
-        "fields": [field("url", "Elasticsearch URL", required=True), field("index", "Index", required=True, default="logs-*"), field("timestamp_field", "Timestamp field", required=True, default="@timestamp")],
-        "credentials": [secret("token", "Bearer token"), secret("username", "Username"), secret("password", "Password"), secret("header:Authorization", "Authorization header (for example, ApiKey …)")],
+        "fields": [
+            field("url", "Elasticsearch URL", required=True),
+            field("index", "Index", required=True, default="logs-*"),
+            field("timestamp_field", "Timestamp field", required=True, default="@timestamp"),
+        ],
+        "credentials": [
+            secret("token", "Bearer token"),
+            secret("username", "Username"),
+            secret("password", "Password"),
+            secret("header:Authorization", "Authorization header (for example, ApiKey …)"),
+        ],
     },
     "opensearch": {
         "label": "OpenSearch",
-        "fields": [field("url", "OpenSearch URL", required=True), field("index", "Index", required=True, default="logs-*"), field("timestamp_field", "Timestamp field", required=True, default="@timestamp"), field("aws_sigv4", "Use AWS SigV4", kind="boolean"), field("region", "AWS region"), field("aws_service", "AWS service", default="es")],
-        "credentials": [secret("token", "Bearer token"), secret("username", "Username"), secret("password", "Password"), secret("header:Authorization", "Authorization header"), secret("aws_access_key_id", "AWS access key ID"), secret("aws_secret_access_key", "AWS secret access key"), secret("aws_session_token", "AWS session token")],
+        "fields": [
+            field("url", "OpenSearch URL", required=True),
+            field("index", "Index", required=True, default="logs-*"),
+            field("timestamp_field", "Timestamp field", required=True, default="@timestamp"),
+            field("aws_sigv4", "Use AWS SigV4", kind="boolean"),
+            field("region", "AWS region"),
+            field("aws_service", "AWS service", default="es"),
+        ],
+        "credentials": [
+            secret("token", "Bearer token"),
+            secret("username", "Username"),
+            secret("password", "Password"),
+            secret("header:Authorization", "Authorization header"),
+            secret("aws_access_key_id", "AWS access key ID"),
+            secret("aws_secret_access_key", "AWS secret access key"),
+            secret("aws_session_token", "AWS session token"),
+        ],
     },
     "graylog": {
         "label": "Graylog",
-        "fields": [field("url", "Graylog API URL", required=True), field("graylog_api", "API mode", required=True, default="scripting")],
-        "credentials": [secret("token", "Bearer token"), secret("username", "Username or token"), secret("password", "Password or token secret")],
+        "fields": [
+            field("url", "Graylog API URL", required=True),
+            field("graylog_api", "API mode", required=True, default="scripting"),
+        ],
+        "credentials": [
+            secret("token", "Bearer token"),
+            secret("username", "Username or token"),
+            secret("password", "Password or token secret"),
+        ],
     },
     "datadog": {
         "label": "Datadog",
-        "fields": [field("url", "Datadog API URL", required=True, default="https://api.datadoghq.com")],
+        "fields": [
+            field("url", "Datadog API URL", required=True, default="https://api.datadoghq.com")
+        ],
         "credentials": [secret("api_key", "API key"), secret("app_key", "Application key")],
     },
     "cloudwatch": {
         "label": "AWS CloudWatch Logs",
         "fields": [field("region", "AWS region", required=True)],
-        "credentials": [secret("aws_access_key_id", "AWS access key ID"), secret("aws_secret_access_key", "AWS secret access key"), secret("aws_session_token", "AWS session token")],
+        "credentials": [
+            secret("aws_access_key_id", "AWS access key ID"),
+            secret("aws_secret_access_key", "AWS secret access key"),
+            secret("aws_session_token", "AWS session token"),
+        ],
     },
     "gcp": {
         "label": "Google Cloud Logging",
-        "fields": [field("url", "Logging API URL", required=True, default="https://logging.googleapis.com"), field("resource_names", "Resource names", required=True, kind="list")],
+        "fields": [
+            field(
+                "url", "Logging API URL", required=True, default="https://logging.googleapis.com"
+            ),
+            field("resource_names", "Resource names", required=True, kind="list"),
+        ],
         "credentials": [secret("token", "Access token")],
     },
     "azure": {
         "label": "Azure Log Analytics",
-        "fields": [field("url", "Log Analytics API URL", required=True, default="https://api.loganalytics.io"), field("workspace_id", "Workspace ID", required=True), field("timestamp_field", "Timestamp field", default="TimeGenerated"), field("message_field", "Message field", default="Message")],
+        "fields": [
+            field(
+                "url", "Log Analytics API URL", required=True, default="https://api.loganalytics.io"
+            ),
+            field("workspace_id", "Workspace ID", required=True),
+            field("timestamp_field", "Timestamp field", default="TimeGenerated"),
+            field("message_field", "Message field", default="Message"),
+        ],
         "credentials": [secret("token", "Access token")],
     },
 }
@@ -101,8 +267,14 @@ SOURCE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 # query and log_group remain accepted for existing saved configurations and API
 # clients, but the normal UI obtains them through provider discovery.
 CONTROL_FIELDS = {
-    "scope_key", "scope_value", "scope_values", "custom_message", "custom_level",
-    "query", "log_group", "log_groups",
+    "scope_key",
+    "scope_value",
+    "scope_values",
+    "custom_message",
+    "custom_level",
+    "query",
+    "log_group",
+    "log_groups",
 }
 
 
@@ -128,16 +300,18 @@ def router(
     db_path: str,
     signals: SignalStore | None = None,
     database_url: str = "",
+    tls_ca: str = "",
+    tls_server_name: str = "",
 ) -> APIRouter:
     enabled = bool(
         target and service_token and admin_token and master_key and (db_path or database_url)
     )
-    client = LogClient(target, service_token) if enabled else None
-    store = (
-        create_log_source_store(db_path, master_key, database_url)
+    client = (
+        LogClient(target, service_token, tls_ca=tls_ca, tls_server_name=tls_server_name)
         if enabled
         else None
     )
+    store = create_log_source_store(db_path, master_key, database_url) if enabled else None
     analyzer = (
         LogSignalAnalyzer(signals, client, history_store=store)
         if signals is not None and client is not None and store is not None
@@ -231,11 +405,15 @@ def router(
 
     def validate(name: str, body: SourceInput) -> tuple[dict, dict[str, str]]:
         if not SOURCE_NAME.fullmatch(name):
-            raise HTTPException(422, "Source name may contain letters, numbers, dot, dash and underscore")
+            raise HTTPException(
+                422, "Source name may contain letters, numbers, dot, dash and underscore"
+            )
         schema = PROVIDERS.get(body.provider)
         if schema is None:
             raise HTTPException(422, "Unsupported log provider")
-        allowed_fields = {item["name"] for item in schema["fields"] + COMMON_FIELDS} | CONTROL_FIELDS
+        allowed_fields = {
+            item["name"] for item in schema["fields"] + COMMON_FIELDS
+        } | CONTROL_FIELDS
         unknown_fields = sorted(set(body.config) - allowed_fields)
         if unknown_fields:
             raise HTTPException(422, "Unknown configuration fields: " + ", ".join(unknown_fields))
@@ -266,10 +444,12 @@ def router(
 
     @routes.get("/log-schemas")
     def schemas(authorization: str | None = Header(default=None)):
-        # Provider names and field descriptions are public UI metadata. Keeping
-        # this readable before admin authentication lets the setup form work
-        # even when the token dialog is cancelled.
-        return {"providers": PROVIDERS, "common_fields": COMMON_FIELDS, "sync_error": state["sync_error"]}
+        authorize(authorization)
+        return {
+            "providers": PROVIDERS,
+            "common_fields": COMMON_FIELDS,
+            "sync_error": state["sync_error"],
+        }
 
     @routes.get("/log-sources")
     def sources(authorization: str | None = Header(default=None)):
@@ -295,7 +475,11 @@ def router(
                 if old is None:
                     call(lambda: client.delete_source(name))
                 else:
-                    call(lambda: client.apply_source(name, old["provider"], old["config"], old["credentials"]))
+                    call(
+                        lambda: client.apply_source(
+                            name, old["provider"], old["config"], old["credentials"]
+                        )
+                    )
                 raise
         state["sync_error"] = None
         return saved
@@ -331,9 +515,7 @@ def router(
     @routes.get("/log-monitoring-status")
     def monitoring_status(authorization: str | None = Header(default=None)):
         authorize(authorization)
-        watchers_by_source = {
-            item["source_name"]: item for item in store.list_watchers()
-        }
+        watchers_by_source = {item["source_name"]: item for item in store.list_watchers()}
         latest_signals: dict[str, dict] = {}
         latest_investigations: dict[str, dict] = {}
         if store is not None:
@@ -357,7 +539,12 @@ def router(
                 status_name = "error"
             elif watcher_state and watcher_state.get("enabled"):
                 status_name = "monitoring"
-            elif config.get("scope_values") or config.get("scope_value") or config.get("query") or config.get("log_group"):
+            elif (
+                config.get("scope_values")
+                or config.get("scope_value")
+                or config.get("query")
+                or config.get("log_group")
+            ):
                 status_name = "paused"
             else:
                 status_name = "needs_scope"
@@ -367,7 +554,10 @@ def router(
                     "provider": source["provider"],
                     "service": source.get("service") or "",
                     "scope_kind": config.get("scope_key") or "",
-                    "scope_value": ", ".join(config.get("scope_values") or []) or config.get("scope_value") or config.get("log_group") or "",
+                    "scope_value": ", ".join(config.get("scope_values") or [])
+                    or config.get("scope_value")
+                    or config.get("log_group")
+                    or "",
                     "status": status_name,
                     "watcher": watcher_state,
                     "latest_detection": signal,
@@ -432,8 +622,15 @@ def router(
         saved = store.get(name)
         if saved is None:
             raise HTTPException(404, "Log source not found")
-        if body.enabled and not (saved["config"].get("scope_values") or saved["config"].get("scope_value") or saved["config"].get("query") or saved["config"].get("log_group")):
-            raise HTTPException(422, "Discover and choose a monitoring scope before enabling automatic monitoring")
+        if body.enabled and not (
+            saved["config"].get("scope_values")
+            or saved["config"].get("scope_value")
+            or saved["config"].get("query")
+            or saved["config"].get("log_group")
+        ):
+            raise HTTPException(
+                422, "Discover and choose a monitoring scope before enabling automatic monitoring"
+            )
         return store.upsert_watcher(
             name,
             enabled=body.enabled,

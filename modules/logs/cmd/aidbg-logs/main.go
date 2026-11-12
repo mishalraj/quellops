@@ -14,6 +14,7 @@ import (
 	logsv1 "github.com/mishalraj/infra-project-poc-mishalraj/modules/logs/gen/logsv1"
 	"github.com/mishalraj/infra-project-poc-mishalraj/modules/logs/internal/logs"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func main() {
@@ -40,7 +41,20 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("cannot listen for gRPC: %w", err)
 	}
-	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(logs.AuthInterceptor(token)))
+	serverOptions := []grpc.ServerOption{grpc.UnaryInterceptor(logs.AuthInterceptor(token))}
+	tlsCert := os.Getenv("AIDBG_LOG_TLS_CERT")
+	tlsKey := os.Getenv("AIDBG_LOG_TLS_KEY")
+	if (tlsCert == "") != (tlsKey == "") {
+		return fmt.Errorf("AIDBG_LOG_TLS_CERT and AIDBG_LOG_TLS_KEY must be configured together")
+	}
+	if tlsCert != "" {
+		transportCredentials, err := credentials.NewServerTLSFromFile(tlsCert, tlsKey)
+		if err != nil {
+			return fmt.Errorf("cannot load gRPC TLS certificate: %w", err)
+		}
+		serverOptions = append(serverOptions, grpc.Creds(transportCredentials))
+	}
+	grpcServer := grpc.NewServer(serverOptions...)
 	logsv1.RegisterLogsServiceServer(grpcServer, logs.NewGRPCServer(service))
 
 	healthMux := http.NewServeMux()
