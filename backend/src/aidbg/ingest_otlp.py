@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 import grpc
-
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+    ExportTraceServiceResponse,
+)
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import (
     TraceServiceServicer,
     add_TraceServiceServicer_to_server,
-)
-from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
-    ExportTraceServiceResponse,
 )
 
 from .engine import SignalStore, SpanPoint
@@ -36,7 +34,12 @@ class StatsStore:
     def signals(self) -> SignalStore:
         return self._signals
 
-    def add(self, span_count: int, span_points: list[SpanPoint], edges: list[tuple[float, str, str, float, bool]]) -> None:
+    def add(
+        self,
+        span_count: int,
+        span_points: list[SpanPoint],
+        edges: list[tuple[float, str, str, float, bool]],
+    ) -> None:
         now = time.time()
         with self._lock:
             self._stats.requests_received += 1
@@ -97,8 +100,14 @@ class TraceIngestServicer(TraceServiceServicer):
                         parent_span_id = ""
                     start_ns = int(sp.start_time_unix_nano or 0)
                     end_ns = int(sp.end_time_unix_nano or 0)
-                    start_unix_s = start_ns / 1_000_000_000.0 if start_ns else time.time() - latency_ms / 1000.0
-                    at_s = end_ns / 1_000_000_000.0 if end_ns else start_unix_s + latency_ms / 1000.0
+                    start_unix_s = (
+                        start_ns / 1_000_000_000.0
+                        if start_ns
+                        else time.time() - latency_ms / 1000.0
+                    )
+                    at_s = (
+                        end_ns / 1_000_000_000.0 if end_ns else start_unix_s + latency_ms / 1000.0
+                    )
                     span_name = (sp.name or "").strip() or service
                     attrs = self._span_attributes(sp)
                     db_system = attrs.get("db.system", "")
@@ -123,10 +132,28 @@ class TraceIngestServicer(TraceServiceServicer):
                     span_points.append(point)
                     span_to_service[(trace_id, span_id)] = service
                     pending_edges.append(
-                        (at_s, trace_id, parent_span_id, service, latency_ms, is_error, trace_id, span_id)
+                        (
+                            at_s,
+                            trace_id,
+                            parent_span_id,
+                            service,
+                            latency_ms,
+                            is_error,
+                            trace_id,
+                            span_id,
+                        )
                     )
         edges: list[tuple[float, str, str, float, bool]] = []
-        for at_s, trace_id, parent_span_id, child_service, latency_ms, is_error, _, _ in pending_edges:
+        for (
+            at_s,
+            trace_id,
+            parent_span_id,
+            child_service,
+            latency_ms,
+            is_error,
+            _,
+            _,
+        ) in pending_edges:
             if not parent_span_id:
                 continue
             parent_service = span_to_service.get((trace_id, parent_span_id))
@@ -143,4 +170,3 @@ def serve_otlp_grpc(bind: str, stats: StatsStore) -> grpc.Server:
     server.add_insecure_port(bind)
     server.start()
     return server
-

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
-from dataclasses import asdict, dataclass
 import threading
 import time
+from collections import defaultdict, deque
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -409,7 +409,9 @@ class SignalStore:
             )
         return {"window_s": window_s, "nodes": nodes, "edges": edges}
 
-    def trace_focus_snapshot(self, impacted_service: str, window_s: int, max_spans: int = 96) -> dict[str, Any] | None:
+    def trace_focus_snapshot(
+        self, impacted_service: str, window_s: int, max_spans: int = 96
+    ) -> dict[str, Any] | None:
         """Pick one recent trace touching `impacted_service`, return span rows for a Jaeger-style Gantt (subtree)."""
         target = (impacted_service or "").strip()
         if not target:
@@ -512,7 +514,9 @@ class SignalStore:
             "spans": rows,
         }
 
-    def detect_anomalies(self, current_window_s: int, baseline_window_s: int) -> list[dict[str, Any]]:
+    def detect_anomalies(
+        self, current_window_s: int, baseline_window_s: int
+    ) -> list[dict[str, Any]]:
         now_s = time.time()
         cur_start = now_s - current_window_s
         base_start = cur_start - baseline_window_s
@@ -592,7 +596,9 @@ class SignalStore:
             cur_lats = [p.latency_ms for p in cur_points]
             cur_p95 = _pct(cur_lats, 0.95)
             base_points = baseline.get((service, statement), [])
-            base_p95 = max(_pct([p.latency_ms for p in base_points], 0.95), 1.0) if base_points else 1.0
+            base_p95 = (
+                max(_pct([p.latency_ms for p in base_points], 0.95), 1.0) if base_points else 1.0
+            )
             ratio = cur_p95 / base_p95
             if cur_p95 < threshold_ms and ratio < 1.5:
                 continue
@@ -790,7 +796,11 @@ class SignalStore:
                     "entity": ev.get("fields", {}).get("involved_name") or ev.get("name"),
                     "namespace": ev.get("namespace"),
                     "score": max(0.2, 0.9 - (age_s / 2400.0)),
-                    "evidence": {"event_type": t, "reason": ev.get("reason"), "message": ev.get("message")},
+                    "evidence": {
+                        "event_type": t,
+                        "reason": ev.get("reason"),
+                        "message": ev.get("message"),
+                    },
                 }
             )
             if len(dependency_down_candidates) >= 5:
@@ -825,7 +835,9 @@ class SignalStore:
                 }
             )
         candidates = deploy_candidates + dependency_down_candidates + traffic_candidates
-        db_candidates = self.db_slow_query_candidates(current_window_s, baseline_window_s, affected_entities)
+        db_candidates = self.db_slow_query_candidates(
+            current_window_s, baseline_window_s, affected_entities
+        )
         change_candidates = self.change_event_candidates(now_ms, affected_entities, graph)
         candidates.extend(db_candidates)
         candidates.extend(change_candidates)
@@ -855,7 +867,9 @@ class SignalStore:
             "log_evidence": log_evidence,
         }
 
-    def why_service_slow(self, service: str, current_window_s: int, baseline_window_s: int) -> dict[str, Any]:
+    def why_service_slow(
+        self, service: str, current_window_s: int, baseline_window_s: int
+    ) -> dict[str, Any]:
         incident = self.build_incident(current_window_s, baseline_window_s)
         service_anoms = [a for a in incident["anomalies"] if a.get("entity") == service]
         return {
@@ -865,7 +879,9 @@ class SignalStore:
             "top_causes": incident["top_causes"],
         }
 
-    def evidence_bundle(self, service: str, current_window_s: int, baseline_window_s: int) -> dict[str, Any]:
+    def evidence_bundle(
+        self, service: str, current_window_s: int, baseline_window_s: int
+    ) -> dict[str, Any]:
         metrics = self.service_metrics(current_window_s)
         metric = next((m for m in metrics if m["service"] == service), None)
         graph = self.graph_snapshot(current_window_s)

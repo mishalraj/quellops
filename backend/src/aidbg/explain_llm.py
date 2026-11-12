@@ -61,7 +61,7 @@ def explain_incident(incident: dict[str, Any], settings: Settings) -> dict[str, 
         "(confidence is optional 0-1 for how well the narrative fits the JSON; omit if unsure).\n"
         "ranked_causes MUST be a JSON array (not a string). Each element MUST be an object, either "
         '{"cause":"short label","likelihood":"low|medium|high","reasoning":"one or two sentences"} '
-        "or {\"type\":\"...\",\"entity\":\"...\",\"reasoning\":\"optional\"} mirroring top_causes. "
+        'or {"type":"...","entity":"...","reasoning":"optional"} mirroring top_causes. '
         "Do not put a single cause object at the top level instead of an array.\n\n"
         + json.dumps(incident)
     )

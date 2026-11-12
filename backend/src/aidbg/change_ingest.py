@@ -57,7 +57,9 @@ def _parse_github_timestamp(raw: Any) -> int:
         return 0
 
 
-def github_push_to_change_events(payload: dict[str, Any], mappings: list[dict[str, str]]) -> list[dict[str, Any]]:
+def github_push_to_change_events(
+    payload: dict[str, Any], mappings: list[dict[str, str]]
+) -> list[dict[str, Any]]:
     if payload.get("deleted"):
         return []
     repo = (payload.get("repository") or {}).get("full_name") or ""

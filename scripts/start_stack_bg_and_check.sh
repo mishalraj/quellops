@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . ./.env
+  set +a
+fi
+
 # Starts required services in background, applies Linux collector endpoint fix,
 # starts Cloudflare quick tunnel, and prints a PASS/FAIL summary.
 # Intentionally does NOT run scenarios.
 
 BACKEND_URL="${BACKEND_URL:-http://localhost:8088}"
+ADMIN_TOKEN="${AIDBG_ADMIN_API_TOKEN:-}"
 BACKEND_OTLP_ENDPOINT="${BACKEND_OTLP_ENDPOINT:-172.18.0.1:4317}"
 CF_TUNNEL_URL_TARGET="${CF_TUNNEL_URL_TARGET:-http://localhost:8088}"
 CF_LOG_FILE="${CF_LOG_FILE:-/tmp/aidbg-cloudflared.log}"
@@ -154,7 +164,7 @@ else
   fail "aidbg agent rollout unhealthy"
 fi
 
-INGEST_JSON="$(curl -fsS "${BACKEND_URL}/stats/ingest" || true)"
+INGEST_JSON="$(curl -fsS -H "Authorization: Bearer ${ADMIN_TOKEN:?AIDBG_ADMIN_API_TOKEN is required}" "${BACKEND_URL}/stats/ingest" || true)"
 if [[ -n "$INGEST_JSON" ]]; then
   pass "stats/ingest reachable"
   SPANS_RX="$(printf "%s" "$INGEST_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(int(d.get("spans_received",0)))' 2>/dev/null || echo 0)"

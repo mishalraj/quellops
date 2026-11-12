@@ -1,12 +1,23 @@
 # Contributing
 
-The logs module is a standalone Go service. A connector must implement bounded discovery and fetching, normalize records, report provider requests and bytes, honor all limits, and avoid returning credentials or unredacted configured secrets.
+Keep modules independent: infrastructure modules collect and normalize evidence;
+central logic correlates it. Never commit credentials, customer data, generated
+bytecode, local databases, or raw production logs.
 
-Before opening a change, run:
+Before opening a change, run the relevant checks:
 
 ```bash
-cd modules/logs && go test ./...
-cd ../.. && .venv/bin/python -m unittest discover -s tests
+PYTHONPATH=backend/src python -m unittest discover -s tests
+ruff check .
+ruff format --check .
+(cd modules/logs && gofmt -l . && go test ./... && go vet ./...)
+(cd agent && gofmt -l . && go test ./... && go vet ./...)
+helm lint charts/quellops-agent --set controlPlaneURL=http://example --set clusterID=test --set credentials.bootstrapToken=test
+docker compose config --quiet
 ```
 
-Add provider response fixtures for discovery, pagination, partial results, record normalization, and limit behavior. Live connector checks must use environment variables; never commit credentials.
+Logs connectors must enforce request, byte, record, time, and pagination limits and
+must redact configured secrets. Kubernetes changes must preserve default-deny event
+delivery, namespace-limited RBAC, durable queue behavior, and per-cluster credentials.
+Tests that require live providers must use environment variables and remain skipped
+when credentials are absent.

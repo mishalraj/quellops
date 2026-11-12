@@ -6,7 +6,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . ./.env
+  set +a
+fi
+
 BACKEND_URL="${BACKEND_URL:-http://localhost:8088}"
+ADMIN_TOKEN="${AIDBG_ADMIN_API_TOKEN:-}"
 EDGE_URL="${EDGE_URL:-http://localhost:8080/}"
 CLUSTER_NAME="${CLUSTER_NAME:-quellops-local}"
 DEMO_NS="${AIDBG_DEMO_NS:-quellops-demo}"
@@ -173,12 +181,12 @@ wait_for_spans() {
   local wait_secs="${SPANS_WAIT_SECONDS:-90}"
   local deadline=$((SECONDS + wait_secs))
   while (( SECONDS < deadline )); do
-    if ! curl -fsS "${BACKEND_URL}/stats/ingest" >/dev/null 2>&1; then
+    if ! curl -fsS -H "Authorization: Bearer ${ADMIN_TOKEN:?AIDBG_ADMIN_API_TOKEN is required}" "${BACKEND_URL}/stats/ingest" >/dev/null 2>&1; then
       sleep 3
       continue
     fi
     local spans
-    spans="$(curl -fsS "${BACKEND_URL}/stats/ingest" | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("spans_received",0)))' 2>/dev/null || echo 0)"
+    spans="$(curl -fsS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BACKEND_URL}/stats/ingest" | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("spans_received",0)))' 2>/dev/null || echo 0)"
     if [[ "$spans" -ge "$min" ]]; then
       echo "Traces flowing: spans_received=${spans}"
       return 0
@@ -209,7 +217,7 @@ cmd_status() {
   fi
   if curl -fsS "${BACKEND_URL}/healthz" >/dev/null 2>&1; then
     echo "backend healthz: ok"
-    curl -fsS "${BACKEND_URL}/stats/ingest" 2>/dev/null && echo "" || true
+    curl -fsS -H "Authorization: Bearer ${ADMIN_TOKEN:?AIDBG_ADMIN_API_TOKEN is required}" "${BACKEND_URL}/stats/ingest" 2>/dev/null && echo "" || true
   else
     echo "backend healthz: unreachable"
   fi
@@ -324,7 +332,7 @@ cmd_start() {
   echo "============================================================"
   echo "Local stack is up."
   echo "  UI:        ${BACKEND_URL%/}/ui/"
-  echo "  Ingest:    curl -fsS ${BACKEND_URL}/stats/ingest"
+  echo "  Ingest:    curl -fsS -H 'Authorization: Bearer \$AIDBG_ADMIN_API_TOKEN' ${BACKEND_URL}/stats/ingest"
   echo "  Edge:      ${EDGE_URL}"
   echo "  Scenario:  EDGE_URL=${EDGE_URL} scripts/run_demo_scenario.sh 01_deploy_latency"
   echo "  All tests: EDGE_URL=${EDGE_URL} scripts/run_all_demo_scenarios.sh"

@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["backend/src/aidbg/logsrpc"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E402", "E501", "UP017"]
+
+[tool.ruff.format]
+quote-style = "double"

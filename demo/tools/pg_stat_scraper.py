@@ -21,6 +21,9 @@ def main() -> int:
         "AIDBG_CHANGE_INGEST_URL",
         "http://host.docker.internal:8088/ingest/change",
     )
+    ingest_token = (os.getenv("AIDBG_CHANGE_INGEST_TOKEN") or "").strip()
+    if not ingest_token:
+        raise RuntimeError("AIDBG_CHANGE_INGEST_TOKEN is required")
     entity = os.getenv("PG_STAT_ENTITY", "inventory")
     top_n = int(os.getenv("PG_STAT_TOP_N", "5"))
     min_mean_ms = float(os.getenv("PG_STAT_MIN_MEAN_MS", "5"))
@@ -58,7 +61,10 @@ def main() -> int:
         req = urllib.request.Request(
             ingest_url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {ingest_token}",
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:

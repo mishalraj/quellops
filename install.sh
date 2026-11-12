@@ -94,11 +94,20 @@ if [[ ! -f .env ]]; then
 AIDBG_LOG_SERVICE_TOKEN=$(openssl rand -hex 32)
 AIDBG_LOG_API_TOKEN=$(openssl rand -hex 32)
 AIDBG_ADMIN_API_TOKEN=$(openssl rand -hex 24)
+AIDBG_CHANGE_INGEST_TOKEN=$(openssl rand -hex 32)
+AIDBG_GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
 AIDBG_K8S_AGENT_TOKEN=$(openssl rand -hex 32)
 AIDBG_MASTER_KEY=$(openssl rand -base64 32 | tr -d '\n')
 AIDBG_POSTGRES_PASSWORD=$(openssl rand -hex 32)
 EOF
   chmod 600 .env
+fi
+
+if ! grep -q '^AIDBG_CHANGE_INGEST_TOKEN=' .env; then
+  printf '\nAIDBG_CHANGE_INGEST_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+fi
+if ! grep -q '^AIDBG_GITHUB_WEBHOOK_SECRET=' .env; then
+  printf '\nAIDBG_GITHUB_WEBHOOK_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env
 fi
 
 if ! grep -q '^AIDBG_K8S_AGENT_TOKEN=' .env; then

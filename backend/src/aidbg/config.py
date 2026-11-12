@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -21,9 +21,13 @@ class Settings:
     # Standalone Go logs tool. The backend contains no provider-specific code.
     log_service_grpc_target: str = os.getenv("AIDBG_LOG_SERVICE_GRPC", "")
     log_service_token: str = os.getenv("AIDBG_LOG_SERVICE_TOKEN", "")
+    log_tls_ca: str = os.getenv("AIDBG_LOG_TLS_CA", "")
+    log_tls_server_name: str = os.getenv("AIDBG_LOG_TLS_SERVER_NAME", "")
     log_api_token: str = os.getenv("AIDBG_LOG_API_TOKEN", "")
     log_admin_token: str = os.getenv("AIDBG_ADMIN_API_TOKEN", "")
     log_master_key: str = os.getenv("AIDBG_MASTER_KEY", "")
+    change_ingest_token: str = os.getenv("AIDBG_CHANGE_INGEST_TOKEN", "")
+    github_webhook_secret: str = os.getenv("AIDBG_GITHUB_WEBHOOK_SECRET", "")
     control_db_path: str = os.getenv(
         "AIDBG_CONTROL_DB",
         str(Path(__file__).resolve().parents[2] / "data" / "aidbg-control.db"),
@@ -37,12 +41,8 @@ class Settings:
     # Optional Kafka-compatible event stream. Database mode remains zero-setup.
     event_transport: str = os.getenv("AIDBG_EVENT_TRANSPORT", "database")
     kafka_bootstrap_servers: str = os.getenv("AIDBG_KAFKA_BOOTSTRAP_SERVERS", "")
-    kafka_k8s_topic: str = os.getenv(
-        "AIDBG_KAFKA_K8S_TOPIC", "quellops.kubernetes.events.v1"
-    )
-    kafka_consumer_group: str = os.getenv(
-        "AIDBG_KAFKA_CONSUMER_GROUP", "quellops-central-v1"
-    )
+    kafka_k8s_topic: str = os.getenv("AIDBG_KAFKA_K8S_TOPIC", "quellops.kubernetes.events.v1")
+    kafka_consumer_group: str = os.getenv("AIDBG_KAFKA_CONSUMER_GROUP", "quellops-central-v1")
     # Local development may embed the consumer. Production runs aidbg.kafka_worker.
     kafka_consumer_embedded: bool = _env_bool("AIDBG_KAFKA_CONSUMER_EMBEDDED", True)
     kafka_security_protocol: str = os.getenv("AIDBG_KAFKA_SECURITY_PROTOCOL", "")

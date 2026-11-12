@@ -4,9 +4,12 @@ COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY backend/src /app/backend/src
 COPY backend/service_map.yaml /app/backend/service_map.yaml
+RUN groupadd --system quellops && useradd --system --gid quellops --home-dir /app quellops \
+    && mkdir -p /data && chown -R quellops:quellops /app /data
 ENV AIDBG_SERVICE_MAP_PATH=/app/backend/service_map.yaml
 ENV PYTHONPATH=/app/backend/src
 ENV AIDBG_OTLP_GRPC_BIND=0.0.0.0:4317
 ENV AIDBG_HTTP_BIND=0.0.0.0:8088
 EXPOSE 4317 8088
+USER quellops
 CMD ["python", "-m", "aidbg.main"]

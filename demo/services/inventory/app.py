@@ -6,10 +6,10 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
+from services.common.db_setup import setup_db_otel
 from services.common.faults import apply_faults, downstream_url
 from services.common.migrate import ensure_schema
 from services.common.otel_setup import instrument_fastapi, setup_otel
-from services.common.db_setup import setup_db_otel
 from services.inventory import db
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "inventory")

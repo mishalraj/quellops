@@ -6,8 +6,8 @@ likely causes of incidents, and helps operators decide what to fix.
 ## Run the logs module
 
 ```bash
-git clone <repository-url>
-cd infra-project-poc-mishalraj
+git clone https://github.com/mishalraj/infra-project-poc-mishalraj.git quellops
+cd quellops
 ./install.sh
 ```
 
@@ -94,12 +94,18 @@ Live connector validation: [docs/LOG_CONNECTOR_VALIDATION.md](docs/LOG_CONNECTOR
 
 ## Kubernetes module
 
-Each cluster runs a read-only Go agent that connects outward to QuellOps. It discovers
-namespaces and workloads, but monitoring stays off until an administrator chooses the
-allowed namespaces in `/ui/kubernetes.html`. Events and cluster state use the same
+Each cluster runs a read-only Go agent that connects outward to QuellOps. The Helm
+`watchNamespaces` allowlist limits what the Kubernetes API lets it read. The portal
+then chooses which of those namespaces may send evidence. Events and cluster state use the same
 SQLite or PostgreSQL control storage as the logs module.
 
 Existing `AIDBG_*` configuration names remain supported for compatibility.
+
+Operational APIs require `AIDBG_ADMIN_API_TOKEN`. Direct change ingestion uses the
+separate `AIDBG_CHANGE_INGEST_TOKEN`, and GitHub webhooks require an
+`X-Hub-Signature-256` generated with `AIDBG_GITHUB_WEBHOOK_SECRET`. The logs gRPC
+connection supports TLS through `AIDBG_LOG_TLS_CERT`, `AIDBG_LOG_TLS_KEY`, and
+`AIDBG_LOG_TLS_CA`; otherwise keep it on a private container or cluster network.
 
 Kubernetes setup: [docs/KUBERNETES_MODULE.md](docs/KUBERNETES_MODULE.md)
 

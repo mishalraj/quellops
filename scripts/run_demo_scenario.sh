@@ -7,6 +7,14 @@ EDGE_URL="${EDGE_URL:-http://localhost:8080/}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-artifacts/demo}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 USE_IN_CLUSTER_LOAD="${USE_IN_CLUSTER_LOAD:-0}"
+export AIDBG_ADMIN_API_TOKEN="${AIDBG_ADMIN_API_TOKEN:-}"
+export AIDBG_CHANGE_INGEST_TOKEN="${AIDBG_CHANGE_INGEST_TOKEN:-}"
+if [[ -f .env ]]; then
+  [[ -n "$AIDBG_ADMIN_API_TOKEN" ]] || export AIDBG_ADMIN_API_TOKEN="$(sed -n 's/^AIDBG_ADMIN_API_TOKEN=//p' .env | tail -n 1)"
+  [[ -n "$AIDBG_CHANGE_INGEST_TOKEN" ]] || export AIDBG_CHANGE_INGEST_TOKEN="$(sed -n 's/^AIDBG_CHANGE_INGEST_TOKEN=//p' .env | tail -n 1)"
+fi
+: "${AIDBG_ADMIN_API_TOKEN:?AIDBG_ADMIN_API_TOKEN is required}"
+: "${AIDBG_CHANGE_INGEST_TOKEN:?AIDBG_CHANGE_INGEST_TOKEN is required}"
 
 if [[ -z "$SCENARIO" ]]; then
   echo "usage: scripts/run_demo_scenario.sh <scenario_name>"
@@ -107,6 +115,7 @@ inject() {
       fi
       "$PYTHON_BIN" - "$SCENARIO_FILE" "$BACKEND_URL" <<'PY' || true
 import json
+import os
 import sys
 import urllib.request
 import yaml
@@ -125,7 +134,7 @@ for item in (spec.get("inject") or {}).get("post_changes") or []:
     req = urllib.request.Request(
         f"{backend_url.rstrip('/')}/ingest/change",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + os.environ["AIDBG_CHANGE_INGEST_TOKEN"]},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
@@ -139,6 +148,7 @@ PY
     post_change)
       "$PYTHON_BIN" - "$SCENARIO_FILE" "$BACKEND_URL" <<'PY'
 import json
+import os
 import sys
 import urllib.request
 import yaml
@@ -155,7 +165,7 @@ payload = {
 req = urllib.request.Request(
     f"{backend_url.rstrip('/')}/ingest/change",
     data=json.dumps(payload).encode("utf-8"),
-    headers={"Content-Type": "application/json"},
+    headers={"Content-Type": "application/json", "Authorization": "Bearer " + os.environ["AIDBG_CHANGE_INGEST_TOKEN"]},
     method="POST",
 )
 with urllib.request.urlopen(req, timeout=10) as resp:
@@ -171,8 +181,8 @@ PY
 }
 
 SPANS_BEFORE=0
-if curl -fsS "${BACKEND_URL}/stats/ingest" >/dev/null 2>&1; then
-  SPANS_BEFORE="$("$PYTHON_BIN" -c "import json,urllib.request; d=json.load(urllib.request.urlopen('${BACKEND_URL}/stats/ingest')); print(int(d.get('spans_received',0)))" 2>/dev/null || echo 0)"
+if curl -fsS -H "Authorization: Bearer ${AIDBG_ADMIN_API_TOKEN}" "${BACKEND_URL}/stats/ingest" >/dev/null 2>&1; then
+  SPANS_BEFORE="$("$PYTHON_BIN" -c "import json,os,urllib.request; r=urllib.request.Request('${BACKEND_URL}/stats/ingest',headers={'Authorization':'Bearer '+os.environ['AIDBG_ADMIN_API_TOKEN']}); d=json.load(urllib.request.urlopen(r)); print(int(d.get('spans_received',0)))" 2>/dev/null || echo 0)"
 fi
 
 echo "=== demo scenario: $SCENARIO (ns=$NS deploy=$DEPLOY) ==="
@@ -180,15 +190,16 @@ inject
 run_load
 sleep "$WAIT_SECONDS"
 
-curl -fsS "${BACKEND_URL}/incident/latest" >"$ARTIFACT_DIR/$SCENARIO/incident.json"
-curl -fsS "${BACKEND_URL}/anomalies/latest" >"$ARTIFACT_DIR/$SCENARIO/anomalies.json"
-curl -fsS "${BACKEND_URL}/graph/snapshot" >"$ARTIFACT_DIR/$SCENARIO/graph_snapshot.json"
-curl -fsS "${BACKEND_URL}/explain/latest" >"$ARTIFACT_DIR/$SCENARIO/llm_answer.json" 2>/dev/null || true
+curl -fsS -H "Authorization: Bearer ${AIDBG_ADMIN_API_TOKEN}" "${BACKEND_URL}/incident/latest" >"$ARTIFACT_DIR/$SCENARIO/incident.json"
+curl -fsS -H "Authorization: Bearer ${AIDBG_ADMIN_API_TOKEN}" "${BACKEND_URL}/anomalies/latest" >"$ARTIFACT_DIR/$SCENARIO/anomalies.json"
+curl -fsS -H "Authorization: Bearer ${AIDBG_ADMIN_API_TOKEN}" "${BACKEND_URL}/graph/snapshot" >"$ARTIFACT_DIR/$SCENARIO/graph_snapshot.json"
+curl -fsS -H "Authorization: Bearer ${AIDBG_ADMIN_API_TOKEN}" "${BACKEND_URL}/explain/latest" >"$ARTIFACT_DIR/$SCENARIO/llm_answer.json" 2>/dev/null || true
 
 "$PYTHON_BIN" scripts/validate_incident.py "$ARTIFACT_DIR/$SCENARIO/incident.json"
 
 "$PYTHON_BIN" - "$SCENARIO_FILE" "$ARTIFACT_DIR/$SCENARIO" "${BACKEND_URL}" "$SPANS_BEFORE" <<'PY'
 import json
+import os
 import sys
 import urllib.request
 
@@ -213,7 +224,8 @@ top_entity = causes[0].get("entity") if causes else None
 allow_k = int(assert_cfg.get("allow_top_k", 3))
 top_k = causes[:allow_k]
 
-ingest = json.load(urllib.request.urlopen(f"{backend_url}/stats/ingest"))
+request = urllib.request.Request(f"{backend_url}/stats/ingest", headers={"Authorization": "Bearer " + os.environ["AIDBG_ADMIN_API_TOKEN"]})
+ingest = json.load(urllib.request.urlopen(request))
 spans_after = int(ingest.get("spans_received", 0))
 min_spans = int(assert_cfg.get("min_spans_received", 0))
 if spans_after - spans_before < min_spans and spans_after < min_spans:

@@ -27,7 +27,8 @@ docker compose up -d --build aidbg-backend
 ## Verify
 
 ```bash
-curl -s http://localhost:8088/explain/latest | head
+curl -s -H "Authorization: Bearer $AIDBG_ADMIN_API_TOKEN" \
+  http://localhost:8088/explain/latest | head
 ```
 
 You should see `provider: azure_openai` and a `summary` field instead of `missing_azure_openai_env`.

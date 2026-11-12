@@ -58,7 +58,8 @@ Expected: `{"ok":true}`
 Wait 20-60s, then confirm traces are flowing:
 
 ```bash
-curl -fsS http://localhost:8088/stats/ingest
+curl -fsS -H "Authorization: Bearer $AIDBG_ADMIN_API_TOKEN" \
+  http://localhost:8088/stats/ingest
 ```
 
 You should see `spans_received > 0`.
@@ -88,7 +89,8 @@ Then verify:
 
 ```bash
 kubectl -n quellops-otel logs deploy/quellops-otel-collector --tail=100 | grep -E "Everything is ready|Exporting failed|no such host" || true
-curl -fsS http://localhost:8088/stats/ingest
+curl -fsS -H "Authorization: Bearer $AIDBG_ADMIN_API_TOKEN" \
+  http://localhost:8088/stats/ingest
 ```
 
 If `172.18.0.1` is not reachable in your environment, use your host-reachable bridge IP and repeat the same `set env` command.
@@ -138,7 +140,8 @@ After redeploy, re-check:
 
 ```bash
 kubectl -n otel-demo get pods
-curl -fsS http://localhost:8088/stats/ingest
+curl -fsS -H "Authorization: Bearer $AIDBG_ADMIN_API_TOKEN" \
+  http://localhost:8088/stats/ingest
 ```
 
 ## 6) Warm traffic in background (recommended)
@@ -210,4 +213,3 @@ kind delete cluster --name quellops-local
 - `spans_received` not increasing -> collector/export path issue.
 - `recent_deploy` dominates unexpectedly -> let rollout settle, warm traffic, rerun scenario.
 - `dependency_down` not ranking first -> ensure `cart` is actually scaled to 0 and fresh events are present.
-

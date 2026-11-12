@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import time
 import base64
-import json
+import hashlib
 import hmac
+import json
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -15,11 +16,11 @@ from .change_ingest import github_push_to_change_events, load_service_map
 from .config import Settings
 from .engine import ChangeEvent, K8sSignal
 from .explain_llm import explain_incident
-from .ingest_otlp import StatsStore
 from .incident_store import create_incident_store, is_meaningful_incident
+from .ingest_otlp import StatsStore
+from .k8s_control import router as k8s_control_router
 from .log_api import router as log_router
 from .log_control import router as log_control_router
-from .k8s_control import router as k8s_control_router
 
 
 class K8sEventIn(BaseModel):
@@ -55,6 +56,8 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
             settings.log_service_grpc_target,
             settings.log_service_token,
             settings.log_api_token,
+            settings.log_tls_ca,
+            settings.log_tls_server_name,
         )
     )
     app.include_router(
@@ -66,6 +69,8 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
             settings.control_db_path,
             stats.signals,
             settings.control_database_url,
+            settings.log_tls_ca,
+            settings.log_tls_server_name,
         )
     )
     app.include_router(
@@ -124,6 +129,13 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         if not authorization or not hmac.compare_digest(authorization, expected):
             raise HTTPException(401, "Administrator authentication required")
 
+    def authorize_change_ingest(authorization: str | None) -> None:
+        if not settings.change_ingest_token:
+            raise HTTPException(503, "Change ingestion is not configured")
+        expected = "Bearer " + settings.change_ingest_token
+        if not authorization or not hmac.compare_digest(authorization, expected):
+            raise HTTPException(401, "Change ingestion authentication required")
+
     def _store_change(payload: ChangeEventIn) -> None:
         at_unix_ms = payload.at_unix_ms or int(time.time() * 1000)
         stats.signals.add_change_event(
@@ -151,7 +163,8 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         return {"ok": True}
 
     @app.get("/stats/ingest")
-    def ingest_stats() -> dict:
+    def ingest_stats(authorization: str | None = Header(default=None)) -> dict:
+        authorize_admin(authorization)
         s = stats.snapshot()
         return {
             "requests_received": s.requests_received,
@@ -160,15 +173,14 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         }
 
     @app.post("/ingest/k8s")
-    def ingest_k8s(
-        payload: K8sEventIn, authorization: str | None = Header(default=None)
-    ) -> dict:
+    def ingest_k8s(payload: K8sEventIn, authorization: str | None = Header(default=None)) -> dict:
         # Compatibility endpoint for older agents. Production agents use the
         # durable batched API, but this path must not permit signal injection.
-        if settings.k8s_agent_token:
-            expected = "Bearer " + settings.k8s_agent_token
-            if not authorization or not hmac.compare_digest(authorization, expected):
-                raise HTTPException(401, "Kubernetes agent authentication required")
+        if not settings.k8s_agent_token:
+            raise HTTPException(503, "Kubernetes agent ingestion is not configured")
+        expected = "Bearer " + settings.k8s_agent_token
+        if not authorization or not hmac.compare_digest(authorization, expected):
+            raise HTTPException(401, "Kubernetes agent authentication required")
         at_unix_ms = payload.at_unix_ms or int(time.time() * 1000)
         stats.signals.add_k8s_event(
             K8sSignal(
@@ -187,17 +199,55 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         return {"ok": True}
 
     @app.post("/ingest/change")
-    def ingest_change(payload: ChangeEventIn) -> dict:
+    def ingest_change(
+        payload: ChangeEventIn,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        authorize_change_ingest(authorization)
         _store_change(payload)
         return {"ok": True}
 
     @app.get("/changes/recent")
-    def changes_recent(limit: int = 100) -> dict:
+    def changes_recent(
+        limit: int = 100,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        authorize_admin(authorization)
         return {"changes": stats.signals.recent_change_events(limit)}
 
     @app.post("/webhook/github")
     async def github_webhook(request: Request) -> dict:
-        payload = await request.json()
+        if not settings.github_webhook_secret:
+            raise HTTPException(503, "GitHub webhook is not configured")
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > 1_048_576:
+                    raise HTTPException(413, "GitHub webhook payload is too large")
+            except ValueError as exc:
+                raise HTTPException(400, "Invalid Content-Length header") from exc
+        raw_payload = await request.body()
+        if len(raw_payload) > 1_048_576:
+            raise HTTPException(413, "GitHub webhook payload is too large")
+        supplied_signature = request.headers.get("x-hub-signature-256", "")
+        expected_signature = (
+            "sha256="
+            + hmac.new(
+                settings.github_webhook_secret.encode("utf-8"),
+                raw_payload,
+                hashlib.sha256,
+            ).hexdigest()
+        )
+        if not supplied_signature or not hmac.compare_digest(
+            supplied_signature, expected_signature
+        ):
+            raise HTTPException(401, "Invalid GitHub webhook signature")
+        try:
+            payload = json.loads(raw_payload)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, "Invalid GitHub webhook JSON") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "GitHub webhook payload must be an object")
         if payload.get("zen") is not None:
             return {"ok": True, "ping": True}
         if payload.get("deleted"):
@@ -208,16 +258,29 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         return {"ok": True, "events": len(events)}
 
     @app.get("/stats/services")
-    def service_stats(window_s: int = 300) -> dict:
+    def service_stats(
+        window_s: int = 300,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        authorize_admin(authorization)
         return {"window_s": window_s, "services": stats.signals.service_metrics(window_s)}
 
     @app.get("/graph/snapshot")
-    def graph_snapshot(window_s: int = 300) -> dict:
+    def graph_snapshot(
+        window_s: int = 300,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        authorize_admin(authorization)
         return stats.signals.graph_snapshot(window_s)
 
     @app.get("/trace/focus")
-    def trace_focus(service: str, window_s: int = 300) -> dict:
+    def trace_focus(
+        service: str,
+        window_s: int = 300,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
         """One representative trace touching `service` (ancestors + subtree), for Gantt UI."""
+        authorize_admin(authorization)
         snap = stats.signals.trace_focus_snapshot(service, window_s)
         return {"window_s": window_s, "service": service, "trace": snap}
 
@@ -225,7 +288,9 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     def anomalies_latest(
         current_window_s: int | None = None,
         baseline_window_s: int | None = None,
+        authorization: str | None = Header(default=None),
     ) -> dict:
+        authorize_admin(authorization)
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
         return {"anomalies": stats.signals.detect_anomalies(cur, base)}
@@ -234,7 +299,9 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     def incident_latest(
         current_window_s: int | None = None,
         baseline_window_s: int | None = None,
+        authorization: str | None = Header(default=None),
     ) -> dict:
+        authorize_admin(authorization)
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
         return durable_incident(cur, base)
@@ -255,14 +322,20 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
     def explain_latest(
         current_window_s: int | None = None,
         baseline_window_s: int | None = None,
+        authorization: str | None = Header(default=None),
     ) -> dict:
+        authorize_admin(authorization)
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
         incident = durable_incident(cur, base)
         return explain_incident(incident, settings)
 
     @app.get("/k8s/events")
-    def k8s_events(limit: int = 100) -> dict:
+    def k8s_events(
+        limit: int = 100,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        authorize_admin(authorization)
         return {"events": stats.signals.recent_k8s_events(limit)}
 
     @app.get("/query/why_slow")
@@ -270,7 +343,9 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         service: str,
         current_window_s: int | None = None,
         baseline_window_s: int | None = None,
+        authorization: str | None = Header(default=None),
     ) -> dict:
+        authorize_admin(authorization)
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
         return stats.signals.why_service_slow(service, cur, base)
@@ -280,7 +355,9 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
         service: str,
         current_window_s: int | None = None,
         baseline_window_s: int | None = None,
+        authorization: str | None = Header(default=None),
     ) -> dict:
+        authorize_admin(authorization)
         cur = current_window_s or settings.current_window_s
         base = baseline_window_s or settings.baseline_window_s
         return stats.signals.evidence_bundle(service, cur, base)
@@ -301,9 +378,27 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
                 patch_ops.append({"op": "add", "path": "/spec/containers/0/env", "value": []})
             patch_ops.extend(
                 [
-                    {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_SERVICE_NAME", "value": metadata.get("name", "unknown")}},
-                    {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_EXPORTER_OTLP_ENDPOINT", "value": "http://quellops-otel-collector.quellops-otel:4318"}},
-                    {"op": "add", "path": "/spec/containers/0/env/-", "value": {"name": "OTEL_TRACES_EXPORTER", "value": "otlp"}},
+                    {
+                        "op": "add",
+                        "path": "/spec/containers/0/env/-",
+                        "value": {
+                            "name": "OTEL_SERVICE_NAME",
+                            "value": metadata.get("name", "unknown"),
+                        },
+                    },
+                    {
+                        "op": "add",
+                        "path": "/spec/containers/0/env/-",
+                        "value": {
+                            "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                            "value": "http://quellops-otel-collector.quellops-otel:4318",
+                        },
+                    },
+                    {
+                        "op": "add",
+                        "path": "/spec/containers/0/env/-",
+                        "value": {"name": "OTEL_TRACES_EXPORTER", "value": "otlp"},
+                    },
                 ]
             )
         patch_b64 = base64.b64encode(json.dumps(patch_ops).encode("utf-8")).decode("utf-8")

@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>QuellOps — operations dashboard</title>
-  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg: #0a0e14;
@@ -139,6 +138,12 @@
       cursor: pointer;
     }
     .topbar button:hover { border-color: var(--accent); }
+    dialog { color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: min(440px, calc(100% - 2rem)); padding: 1.25rem; }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
+    dialog h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+    dialog p { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+    dialog input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem; }
+    dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
     #errBox {
       display: none;
       background: rgba(240, 113, 120, 0.12);
@@ -592,9 +597,6 @@
           <a href="/ui/logs.html">Configure log sources</a>
           <a href="/ui/kubernetes.html">Configure Kubernetes</a>
           <a href="/docs" target="_blank" rel="noopener">OpenAPI docs</a>
-          <a href="/incident/latest" target="_blank" rel="noopener">GET /incident/latest</a>
-          <a href="/graph/snapshot" target="_blank" rel="noopener">GET /graph/snapshot</a>
-          <a href="/trace/focus?service=frontend" target="_blank" rel="noopener">GET /trace/focus</a>
         </nav>
       </div>
       <div>
@@ -620,6 +622,7 @@
         </div>
         <div class="controls">
           <label><input type="checkbox" id="auto" checked /> Auto refresh 3s</label>
+          <button type="button" id="adminAccess">Administrator access</button>
           <button type="button" id="refreshBtn">Refresh now</button>
         </div>
       </div>
@@ -716,6 +719,17 @@
     </div>
   </div>
   <div class="toast" id="toast">Copied</div>
+  <dialog id="tokenDialog">
+    <form method="dialog" id="tokenForm">
+      <h2>Unlock operations data</h2>
+      <p>Enter the administrator token created by <code>install.sh</code>. It is kept only in this browser tab.</p>
+      <input id="adminToken" type="password" autocomplete="current-password" required aria-label="Administrator token" />
+      <div class="dialog-actions">
+        <button type="button" id="cancelToken">Cancel</button>
+        <button type="submit">Unlock</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -735,8 +749,14 @@
       setTimeout(() => t.classList.remove("show"), 1600);
     }
 
+    function adminToken() { return sessionStorage.getItem("quellopsAdminToken") || sessionStorage.getItem("aidbgAdminToken") || ""; }
+    function askForToken() { if (!$('tokenDialog').open) $('tokenDialog').showModal(); }
+
     async function fetchJson(path) {
-      const r = await fetch(path);
+      const token = adminToken();
+      if (!token) { askForToken(); throw new Error("administrator token required"); }
+      const r = await fetch(path, {headers: {Authorization: "Bearer " + token}});
+      if (r.status === 401) { sessionStorage.removeItem("quellopsAdminToken"); sessionStorage.removeItem("aidbgAdminToken"); askForToken(); }
       if (!r.ok) throw new Error(path + " → " + r.status);
       return r.json();
     }
@@ -912,7 +932,7 @@
       const nodes = snapshot.nodes || [];
       const edges = snapshot.edges || [];
       if (typeof vis === "undefined") {
-        $("graphNetwork").innerHTML = "<div class='empty-state'>Graph library unavailable (check network). Use <a href='/graph/snapshot' style='color:var(--accent)'>/graph/snapshot</a>.</div>";
+        $("graphNetwork").innerHTML = "<div class='empty-state'>The optional force-layout renderer is not bundled. Focused call paths remain available above.</div>";
         return;
       }
       if (!nodes.length) {
@@ -1448,9 +1468,17 @@
     });
 
     $("refreshBtn").addEventListener("click", load);
+    $("adminAccess").addEventListener("click", askForToken);
+    $("cancelToken").addEventListener("click", () => $("tokenDialog").close());
+    $("tokenForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      sessionStorage.setItem("quellopsAdminToken", $("adminToken").value);
+      $("tokenDialog").close();
+      load();
+    });
     $("auto").addEventListener("change", () => { if ($("auto").checked) load(); });
 
-    load();
+    if (adminToken()) load(); else askForToken();
     setInterval(() => { if ($("auto").checked) load(); }, 3000);
   </script>
 </body>

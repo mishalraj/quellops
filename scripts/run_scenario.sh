@@ -6,6 +6,14 @@ BACKEND_URL="${BACKEND_URL:-http://localhost:8088}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-artifacts}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SCENARIO_FILE=""
+ADMIN_TOKEN="${AIDBG_ADMIN_API_TOKEN:-}"
+if [[ -z "$ADMIN_TOKEN" && -f .env ]]; then
+  ADMIN_TOKEN="$(sed -n 's/^AIDBG_ADMIN_API_TOKEN=//p' .env | tail -n 1)"
+fi
+if [[ -z "$ADMIN_TOKEN" ]]; then
+  echo "AIDBG_ADMIN_API_TOKEN is required (set it or run ./install.sh first)" >&2
+  exit 1
+fi
 
 if [[ -z "$SCENARIO" ]]; then
   echo "usage: scripts/run_scenario.sh <scenario_name>"
@@ -147,10 +155,10 @@ if [[ "$(yaml_eval 'inject.type')" == "load_spike_only" ]]; then
 fi
 sleep "$WAIT_SECONDS"
 
-curl -fsS "$BACKEND_URL/incident/latest" > "$ARTIFACT_DIR/$SCENARIO/incident.json"
-curl -fsS "$BACKEND_URL/explain/latest" > "$ARTIFACT_DIR/$SCENARIO/llm_answer.json"
-curl -fsS "$BACKEND_URL/graph/snapshot" > "$ARTIFACT_DIR/$SCENARIO/graph_snapshot.json"
-curl -fsS "$BACKEND_URL/anomalies/latest" > "$ARTIFACT_DIR/$SCENARIO/anomalies.json"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$BACKEND_URL/incident/latest" > "$ARTIFACT_DIR/$SCENARIO/incident.json"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$BACKEND_URL/explain/latest" > "$ARTIFACT_DIR/$SCENARIO/llm_answer.json"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$BACKEND_URL/graph/snapshot" > "$ARTIFACT_DIR/$SCENARIO/graph_snapshot.json"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$BACKEND_URL/anomalies/latest" > "$ARTIFACT_DIR/$SCENARIO/anomalies.json"
 
 "$PYTHON_BIN" scripts/validate_incident.py "$ARTIFACT_DIR/$SCENARIO/incident.json"
 assert_result "$ARTIFACT_DIR/$SCENARIO/incident.json"

@@ -13,6 +13,10 @@ def _post_change(kind: str, entity: str, metadata: dict) -> None:
     url = (os.getenv("AIDBG_CHANGE_INGEST_URL") or "").strip()
     if not url:
         return
+    token = (os.getenv("AIDBG_CHANGE_INGEST_TOKEN") or "").strip()
+    if not token:
+        print("migrate: change ingest skipped (AIDBG_CHANGE_INGEST_TOKEN is missing)")
+        return
     payload = {
         "kind": kind,
         "at_unix_ms": int(time.time() * 1000),
@@ -23,7 +27,7 @@ def _post_change(kind: str, entity: str, metadata: dict) -> None:
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
     )
     try:
@@ -69,9 +73,7 @@ def apply_migration(name: str) -> None:
                 cur.execute("DROP INDEX IF EXISTS idx_inventory_sku")
                 statement = "DROP INDEX IF EXISTS idx_inventory_sku"
             elif name == "restore_inventory_sku_index":
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_inventory_sku ON inventory_items (sku)"
-                )
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_inventory_sku ON inventory_items (sku)")
                 statement = "CREATE INDEX IF NOT EXISTS idx_inventory_sku ON inventory_items (sku)"
             else:
                 raise ValueError(f"unknown migration: {name}")
