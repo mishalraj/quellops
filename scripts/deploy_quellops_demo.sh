@@ -21,6 +21,17 @@ kind load docker-image quellops-demo/loadgen:dev --name "${CLUSTER_NAME}"
 
 echo "applying quellops-demo manifests..."
 kubectl apply -f deploy/quellops-demo/namespace.yaml
+CHANGE_INGEST_TOKEN="${AIDBG_CHANGE_INGEST_TOKEN:-}"
+if [[ -z "$CHANGE_INGEST_TOKEN" && -f .env ]]; then
+  CHANGE_INGEST_TOKEN="$(sed -n 's/^AIDBG_CHANGE_INGEST_TOKEN=//p' .env | tail -n 1)"
+fi
+if [[ -z "$CHANGE_INGEST_TOKEN" ]]; then
+  echo "AIDBG_CHANGE_INGEST_TOKEN is required (set it or run ./install.sh first)" >&2
+  exit 1
+fi
+kubectl -n quellops-demo create secret generic quellops-api-tokens \
+  --from-literal=change-ingest-token="$CHANGE_INGEST_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f deploy/quellops-demo/postgres.yaml
 kubectl -n quellops-demo rollout status deploy/postgres --timeout=5m
 kubectl apply -f deploy/quellops-demo/catalog.yaml

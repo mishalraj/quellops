@@ -6,8 +6,8 @@ import time
 import unittest
 from pathlib import Path
 
-from aidbg.kafka_transport import KafkaEventConsumer, KafkaOutboxPublisher
 from aidbg.k8s_store import KubernetesStore
+from aidbg.kafka_transport import KafkaEventConsumer, KafkaOutboxPublisher
 
 
 class FakeProducer:
@@ -83,6 +83,7 @@ class FakeConsumer:
 
     def close(self):
         self.closed = True
+
 
 class KafkaTransportTests(unittest.TestCase):
     def setUp(self):

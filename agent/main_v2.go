@@ -101,10 +101,16 @@ func main() {
 	queueLimit := flag.Int("queue-limit", getenvInt("AIDBG_K8S_QUEUE_LIMIT", 2000), "maximum events retained in the durable queue")
 	queuePath := flag.String("queue-path", getenv("AIDBG_K8S_QUEUE_PATH", "/var/lib/quellops-agent/events.json"), "durable event queue path")
 	tokenPath := flag.String("token-path", getenv("AIDBG_K8S_TOKEN_PATH", "/var/lib/quellops-agent/agent.token"), "per-cluster token path")
+	allowedNamespacesFlag := flag.String("allowed-namespaces", getenv("AIDBG_K8S_ALLOWED_NAMESPACES", ""), "comma-separated namespaces the agent may watch; use * only for explicit cluster-wide access")
 	flag.Parse()
 
 	if *token == "" {
 		fmt.Fprintln(os.Stderr, "AIDBG_K8S_AGENT_TOKEN is required")
+		os.Exit(2)
+	}
+	allowedNamespaces := parseNamespaces(*allowedNamespacesFlag)
+	if len(allowedNamespaces) == 0 {
+		fmt.Fprintln(os.Stderr, "AIDBG_K8S_ALLOWED_NAMESPACES is required; list namespaces or explicitly use *")
 		os.Exit(2)
 	}
 	cfg, err := kubernetesConfig(*kubeconfig)
@@ -162,10 +168,10 @@ func main() {
 
 	// Registration starts with an empty scope. Until the backend returns an
 	// administrator-approved namespace list, informer callbacks forward nothing.
-	config, registerErr := registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors)
+	config, registerErr := registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors, allowedNamespaces)
 	if registerErr != nil && activeToken != *token {
 		control.SetToken(*token)
-		config, registerErr = registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors)
+		config, registerErr = registerCluster(ctx, control, clientset, clusterID, *clusterName, queue, errors, allowedNamespaces)
 	}
 	if registerErr != nil {
 		errors.Set(registerErr)
@@ -182,16 +188,27 @@ func main() {
 	}
 
 	stopCh := make(chan struct{})
-	factory := informers.NewSharedInformerFactory(clientset, 60*time.Second)
-	installHandlers(factory, enqueue)
-	factory.Start(stopCh)
-	factory.WaitForCacheSync(stopCh)
+	if len(allowedNamespaces) == 1 && allowedNamespaces[0] == "*" {
+		factory := informers.NewSharedInformerFactory(clientset, 60*time.Second)
+		installHandlers(factory, enqueue, true)
+		factory.Start(stopCh)
+		factory.WaitForCacheSync(stopCh)
+	} else {
+		for _, namespace := range allowedNamespaces {
+			factory := informers.NewSharedInformerFactoryWithOptions(
+				clientset, 60*time.Second, informers.WithNamespace(namespace),
+			)
+			installHandlers(factory, enqueue, false)
+			factory.Start(stopCh)
+			factory.WaitForCacheSync(stopCh)
+		}
+	}
 
 	var workers sync.WaitGroup
 	workers.Add(2)
 	go func() {
 		defer workers.Done()
-		controlLoop(ctx, control, clientset, clusterID, *clusterName, queue, scope, errors, *tokenPath)
+		controlLoop(ctx, control, clientset, clusterID, *clusterName, queue, scope, errors, *tokenPath, allowedNamespaces)
 	}()
 	go func() {
 		defer workers.Done()
@@ -228,58 +245,63 @@ func shortID(value string) string {
 	return value
 }
 
-func discover(ctx context.Context, client kubernetes.Interface) ([]string, []Workload, string, error) {
-	namespaceList, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	namespaces := make([]string, 0, len(namespaceList.Items))
-	for _, item := range namespaceList.Items {
-		namespaces = append(namespaces, item.Name)
+func discover(ctx context.Context, client kubernetes.Interface, allowedNamespaces []string) ([]string, []Workload, string, error) {
+	namespaces := append([]string(nil), allowedNamespaces...)
+	if len(namespaces) == 1 && namespaces[0] == "*" {
+		namespaceList, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		namespaces = namespaces[:0]
+		for _, item := range namespaceList.Items {
+			namespaces = append(namespaces, item.Name)
+		}
 	}
 	sort.Strings(namespaces)
 	workloads := make([]Workload, 0)
-	deployments, err := client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	for _, item := range deployments.Items {
-		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Deployment"})
-	}
-	statefulSets, err := client.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	for _, item := range statefulSets.Items {
-		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "StatefulSet"})
-	}
-	daemonSets, err := client.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	for _, item := range daemonSets.Items {
-		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "DaemonSet"})
-	}
-	jobs, err := client.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	for _, item := range jobs.Items {
-		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Job"})
-	}
-	cronJobs, err := client.BatchV1().CronJobs("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	for _, item := range cronJobs.Items {
-		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "CronJob"})
-	}
-	ingresses, err := client.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, nil, "", err
-	}
-	for _, item := range ingresses.Items {
-		workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Ingress"})
+	for _, namespace := range namespaces {
+		deployments, err := client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		for _, item := range deployments.Items {
+			workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Deployment"})
+		}
+		statefulSets, err := client.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		for _, item := range statefulSets.Items {
+			workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "StatefulSet"})
+		}
+		daemonSets, err := client.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		for _, item := range daemonSets.Items {
+			workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "DaemonSet"})
+		}
+		jobs, err := client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		for _, item := range jobs.Items {
+			workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Job"})
+		}
+		cronJobs, err := client.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		for _, item := range cronJobs.Items {
+			workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "CronJob"})
+		}
+		ingresses, err := client.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, nil, "", err
+		}
+		for _, item := range ingresses.Items {
+			workloads = append(workloads, Workload{Namespace: item.Namespace, Name: item.Name, Kind: "Ingress"})
+		}
 	}
 	sort.Slice(workloads, func(i, j int) bool {
 		if workloads[i].Namespace != workloads[j].Namespace {
@@ -297,8 +319,8 @@ func discover(ctx context.Context, client kubernetes.Interface) ([]string, []Wor
 	return namespaces, workloads, version.GitVersion, nil
 }
 
-func registerCluster(ctx context.Context, control *controlClient, client kubernetes.Interface, clusterID, name string, queue *eventQueue, errors *errorState) (AgentConfig, error) {
-	namespaces, workloads, version, err := discover(ctx, client)
+func registerCluster(ctx context.Context, control *controlClient, client kubernetes.Interface, clusterID, name string, queue *eventQueue, errors *errorState, allowedNamespaces []string) (AgentConfig, error) {
+	namespaces, workloads, version, err := discover(ctx, client, allowedNamespaces)
 	if err != nil {
 		return AgentConfig{}, err
 	}
@@ -310,7 +332,7 @@ func registerCluster(ctx context.Context, control *controlClient, client kuberne
 	})
 }
 
-func controlLoop(ctx context.Context, control *controlClient, client kubernetes.Interface, clusterID, name string, queue *eventQueue, scope *scopeState, errors *errorState, tokenPath string) {
+func controlLoop(ctx context.Context, control *controlClient, client kubernetes.Interface, clusterID, name string, queue *eventQueue, scope *scopeState, errors *errorState, tokenPath string, allowedNamespaces []string) {
 	heartbeat := time.NewTicker(30 * time.Second)
 	discovery := time.NewTicker(5 * time.Minute)
 	defer heartbeat.Stop()
@@ -336,7 +358,7 @@ func controlLoop(ctx context.Context, control *controlClient, client kubernetes.
 			}
 			errors.Set(nil)
 		case <-discovery.C:
-			config, err := registerCluster(ctx, control, client, clusterID, name, queue, errors)
+			config, err := registerCluster(ctx, control, client, clusterID, name, queue, errors, allowedNamespaces)
 			if err != nil {
 				errors.Set(err)
 				continue
@@ -384,7 +406,7 @@ func deliveryLoop(ctx context.Context, control *controlClient, clusterID string,
 	}
 }
 
-func installHandlers(factory informers.SharedInformerFactory, enqueue func(Event)) {
+func installHandlers(factory informers.SharedInformerFactory, enqueue func(Event), includeNodes bool) {
 	deployments := factory.Apps().V1().Deployments().Informer()
 	_, _ = deployments.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
@@ -455,24 +477,26 @@ func installHandlers(factory informers.SharedInformerFactory, enqueue func(Event
 			Fields: map[string]string{"current_replicas": strconv.Itoa(int(hpa.Status.CurrentReplicas)), "desired_replicas": strconv.Itoa(int(hpa.Status.DesiredReplicas)), "scale_target": hpa.Spec.ScaleTargetRef.Name}})
 	}})
 
-	nodes := factory.Core().V1().Nodes().Informer()
-	_, _ = nodes.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
-		oldNode, oldOK := oldObj.(*corev1.Node)
-		node, ok := newObj.(*corev1.Node)
-		if !ok || !oldOK {
-			return
-		}
-		oldReason, oldFields := nodeHealth(oldNode)
-		reason, fields := nodeHealth(node)
-		if reason == oldReason && fields["ready"] == oldFields["ready"] {
-			return
-		}
-		eventType := "k8s.node.recovered"
-		if reason != "" || fields["ready"] != "true" {
-			eventType = "k8s.node.pressure"
-		}
-		enqueue(Event{Type: eventType, Name: node.Name, Kind: "Node", Reason: reason, Labels: node.Labels, Fields: fields})
-	}})
+	if includeNodes {
+		nodes := factory.Core().V1().Nodes().Informer()
+		_, _ = nodes.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
+			oldNode, oldOK := oldObj.(*corev1.Node)
+			node, ok := newObj.(*corev1.Node)
+			if !ok || !oldOK {
+				return
+			}
+			oldReason, oldFields := nodeHealth(oldNode)
+			reason, fields := nodeHealth(node)
+			if reason == oldReason && fields["ready"] == oldFields["ready"] {
+				return
+			}
+			eventType := "k8s.node.recovered"
+			if reason != "" || fields["ready"] != "true" {
+				eventType = "k8s.node.pressure"
+			}
+			enqueue(Event{Type: eventType, Name: node.Name, Kind: "Node", Reason: reason, Labels: node.Labels, Fields: fields})
+		}})
+	}
 
 	jobs := factory.Batch().V1().Jobs().Informer()
 	_, _ = jobs.AddEventHandler(cache.ResourceEventHandlerFuncs{UpdateFunc: func(oldObj, newObj any) {
@@ -612,4 +636,25 @@ func getenvInt(key string, fallback int) int {
 		return value
 	}
 	return fallback
+}
+
+func parseNamespaces(value string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0)
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	if _, wildcard := seen["*"]; wildcard {
+		return []string{"*"}
+	}
+	sort.Strings(result)
+	return result
 }

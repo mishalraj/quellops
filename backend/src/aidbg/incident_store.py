@@ -180,9 +180,7 @@ class PostgresIncidentStore(IncidentStore):
 
     @contextmanager
     def _connect(self):
-        with self._psycopg.connect(
-            self.database_url, row_factory=self._dict_row
-        ) as connection:
+        with self._psycopg.connect(self.database_url, row_factory=self._dict_row) as connection:
             with connection.transaction():
                 yield connection
 
@@ -290,9 +288,7 @@ class PostgresIncidentStore(IncidentStore):
         return result
 
 
-def create_incident_store(
-    path: str, database_url: str = "", retention: int = 500
-) -> IncidentStore:
+def create_incident_store(path: str, database_url: str = "", retention: int = 500) -> IncidentStore:
     return (
         PostgresIncidentStore(database_url, retention)
         if database_url

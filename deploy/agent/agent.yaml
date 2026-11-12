@@ -74,6 +74,10 @@ spec:
               value: "http://host.docker.internal:8088"
             - name: AIDBG_CLUSTER_NAME
               value: ""
+            # This legacy manifest intentionally uses cluster-wide discovery.
+            # Prefer the Helm chart with an explicit namespace allowlist.
+            - name: AIDBG_K8S_ALLOWED_NAMESPACES
+              value: "*"
             - name: AIDBG_K8S_AGENT_TOKEN
               valueFrom:
                 secretKeyRef:

@@ -8,20 +8,16 @@ import unittest
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from aidbg.engine import SignalStore
 from aidbg.incident_store import IncidentStore
 from aidbg.k8s_control import router
-
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 BOOTSTRAP_SERVERS = os.getenv("AIDBG_TEST_KAFKA_BOOTSTRAP_SERVERS", "")
 
 
-@unittest.skipUnless(
-    BOOTSTRAP_SERVERS, "AIDBG_TEST_KAFKA_BOOTSTRAP_SERVERS is not configured"
-)
+@unittest.skipUnless(BOOTSTRAP_SERVERS, "AIDBG_TEST_KAFKA_BOOTSTRAP_SERVERS is not configured")
 class LiveKafkaTransportTests(unittest.TestCase):
     def test_agent_http_batch_reaches_kafka_topic(self):
         from confluent_kafka import Consumer
@@ -65,11 +61,13 @@ class LiveKafkaTransportTests(unittest.TestCase):
                         "workloads": [],
                     }
                     self.assertEqual(
-                        (registration_response := client.post(
-                            "/api/kubernetes/v1/register",
-                            json=registration,
-                            headers=agent_headers,
-                        )).status_code,
+                        (
+                            registration_response := client.post(
+                                "/api/kubernetes/v1/register",
+                                json=registration,
+                                headers=agent_headers,
+                            )
+                        ).status_code,
                         200,
                     )
                     cluster_headers = {
@@ -116,9 +114,7 @@ class LiveKafkaTransportTests(unittest.TestCase):
                     self.assertEqual(envelope["cluster_id"], cluster_id)
                     self.assertEqual(envelope["event_id"], event_id)
 
-                    status = client.get(
-                        "/admin/kubernetes/status", headers=admin_headers
-                    ).json()
+                    status = client.get("/admin/kubernetes/status", headers=admin_headers).json()
                     self.assertEqual(status["transport"]["mode"], "kafka")
                     self.assertEqual(status["transport"]["backlog"], 0)
                     deadline = time.time() + 10
@@ -130,9 +126,7 @@ class LiveKafkaTransportTests(unittest.TestCase):
                         status = client.get(
                             "/admin/kubernetes/status", headers=admin_headers
                         ).json()
-                    self.assertGreaterEqual(
-                        status["transport"]["consumer"]["processed"], 1, status
-                    )
+                    self.assertGreaterEqual(status["transport"]["consumer"]["processed"], 1, status)
                     self.assertTrue(status["transport"]["healthy"], status)
                     self.assertTrue(status["transport"]["consumer"]["healthy"])
                     incidents = incident_store.list()

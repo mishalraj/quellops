@@ -13,9 +13,7 @@ def _producer_factory(config: dict[str, Any]):
     try:
         from confluent_kafka import Producer
     except ImportError as exc:
-        raise RuntimeError(
-            "Kafka transport requires the confluent-kafka package"
-        ) from exc
+        raise RuntimeError("Kafka transport requires the confluent-kafka package") from exc
     return Producer(config)
 
 
@@ -23,9 +21,7 @@ def _consumer_factory(config: dict[str, Any]):
     try:
         from confluent_kafka import Consumer
     except ImportError as exc:
-        raise RuntimeError(
-            "Kafka processing requires the confluent-kafka package"
-        ) from exc
+        raise RuntimeError("Kafka processing requires the confluent-kafka package") from exc
     return Consumer(config)
 
 

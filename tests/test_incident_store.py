@@ -7,8 +7,6 @@ import unittest
 import uuid
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from aidbg.api import create_app
 from aidbg.config import Settings
 from aidbg.engine import K8sSignal
@@ -18,6 +16,7 @@ from aidbg.incident_store import (
     is_meaningful_incident,
 )
 from aidbg.ingest_otlp import StatsStore
+from fastapi.testclient import TestClient
 
 
 class IncidentStoreTests(unittest.TestCase):
@@ -96,17 +95,20 @@ class IncidentStoreTests(unittest.TestCase):
                 )
             )
             with TestClient(create_app(first_stats, settings)) as client:
-                first = client.get("/incident/latest").json()
+                self.assertEqual(client.get("/incident/latest").status_code, 401)
+                first = client.get(
+                    "/incident/latest",
+                    headers={"Authorization": "Bearer admin"},
+                ).json()
                 self.assertTrue(first["top_causes"])
-                self.assertEqual(
-                    client.get("/admin/incidents/history").status_code, 401
-                )
+                self.assertEqual(client.get("/admin/incidents/history").status_code, 401)
             with TestClient(create_app(StatsStore(), settings)) as client:
-                restored = client.get("/incident/latest").json()
+                restored = client.get(
+                    "/incident/latest",
+                    headers={"Authorization": "Bearer admin"},
+                ).json()
                 self.assertTrue(restored["top_causes"])
-                self.assertEqual(
-                    restored["persistence"]["trigger_type"], "api_snapshot"
-                )
+                self.assertEqual(restored["persistence"]["trigger_type"], "api_snapshot")
                 history = client.get(
                     "/admin/incidents/history",
                     headers={"Authorization": "Bearer admin"},
@@ -134,14 +136,10 @@ class PostgresIncidentStoreTests(unittest.TestCase):
         replica.initialize()
         self.assertEqual(replica.latest()["persistence"]["incident_key"], key)
         self.assertEqual(replica.list(1)[0]["persistence"]["incident_key"], key)
-        replica.save_worker_status(
-            "test-worker", {"group": "test-worker", "healthy": True}
-        )
+        replica.save_worker_status("test-worker", {"group": "test-worker", "healthy": True})
         self.assertTrue(replica.worker_status("test-worker")["healthy"])
         with store._connect() as connection:
-            connection.execute(
-                "DELETE FROM incident_results WHERE incident_key=%s", (key,)
-            )
+            connection.execute("DELETE FROM incident_results WHERE incident_key=%s", (key,))
             connection.execute(
                 "DELETE FROM consumer_worker_status WHERE group_id=%s", ("test-worker",)
             )

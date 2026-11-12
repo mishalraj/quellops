@@ -6,13 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from aidbg.engine import SignalStore
 from aidbg.k8s_control import router
 from aidbg.k8s_store import KubernetesStore
-
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 AGENT_HEADERS = {"Authorization": "Bearer agent-secret"}
 ADMIN_HEADERS = {"Authorization": "Bearer admin-secret"}
@@ -24,9 +22,7 @@ class KubernetesControlTests(unittest.TestCase):
         self.db = str(Path(self.temp.name) / "control.db")
         self.signals = SignalStore()
         self.app = FastAPI()
-        self.app.include_router(
-            router("agent-secret", "admin-secret", self.db, self.signals)
-        )
+        self.app.include_router(router("agent-secret", "admin-secret", self.db, self.signals))
 
     def tearDown(self):
         self.temp.cleanup()
@@ -39,9 +35,7 @@ class KubernetesControlTests(unittest.TestCase):
             "agent_version": "0.2.0",
             "kubernetes_version": "v1.34.0",
             "namespaces": ["default", "production"],
-            "workloads": [
-                {"namespace": "production", "name": "checkout", "kind": "Deployment"}
-            ],
+            "workloads": [{"namespace": "production", "name": "checkout", "kind": "Deployment"}],
             "queue_depth": 0,
             "dropped_events": 0,
         }
@@ -99,13 +93,9 @@ class KubernetesControlTests(unittest.TestCase):
             self.assertEqual(response.json()["selected_namespaces"], ["production"])
 
             batch = {"cluster_id": "k8s:cluster-123", "events": [self.event()]}
-            response = client.post(
-                "/api/kubernetes/v1/events", json=batch, headers=cluster_headers
-            )
+            response = client.post("/api/kubernetes/v1/events", json=batch, headers=cluster_headers)
             self.assertEqual(response.json()["accepted"], 1)
-            response = client.post(
-                "/api/kubernetes/v1/events", json=batch, headers=cluster_headers
-            )
+            response = client.post("/api/kubernetes/v1/events", json=batch, headers=cluster_headers)
             self.assertEqual(response.json()["duplicates"], 1)
 
             # The bridge makes persisted events available to central correlation.
@@ -127,7 +117,9 @@ class KubernetesControlTests(unittest.TestCase):
         # A second backend replica can read the same durable cluster and event state.
         replica_store = KubernetesStore(self.db)
         replica_store.initialize()
-        self.assertEqual(replica_store.get("k8s:cluster-123")["selected_namespaces"], ["production"])
+        self.assertEqual(
+            replica_store.get("k8s:cluster-123")["selected_namespaces"], ["production"]
+        )
         self.assertEqual(len(replica_store.list_events()), 1)
 
     def test_delete_removes_cluster_events(self):
@@ -140,7 +132,8 @@ class KubernetesControlTests(unittest.TestCase):
             }
             client.put(
                 "/admin/kubernetes/clusters/k8s:cluster-123/scope",
-                json={"namespaces": ["production"]}, headers=ADMIN_HEADERS,
+                json={"namespaces": ["production"]},
+                headers=ADMIN_HEADERS,
             )
             client.post(
                 "/api/kubernetes/v1/events",
@@ -210,9 +203,7 @@ class KubernetesControlTests(unittest.TestCase):
         store.register(self.registration())
         first = [self.event(f"event-{index:04d}") for index in range(110)]
         store.add_events("k8s:cluster-123", first)
-        store.mark_events_local(
-            "k8s:cluster-123", [event["event_id"] for event in first]
-        )
+        store.mark_events_local("k8s:cluster-123", [event["event_id"] for event in first])
         final = self.event("event-final")
         store.add_events("k8s:cluster-123", [final])
         store.mark_events_local("k8s:cluster-123", [final["event_id"]])
@@ -222,9 +213,10 @@ class KubernetesControlTests(unittest.TestCase):
 
     def test_external_consumer_mode_keeps_publisher_in_api(self):
         app = FastAPI()
-        with patch("aidbg.k8s_control.KafkaOutboxPublisher") as publisher_type, patch(
-            "aidbg.k8s_control.KafkaEventConsumer"
-        ) as consumer_type:
+        with (
+            patch("aidbg.k8s_control.KafkaOutboxPublisher") as publisher_type,
+            patch("aidbg.k8s_control.KafkaEventConsumer") as consumer_type,
+        ):
             publisher_type.return_value.status.return_value = {
                 "mode": "kafka",
                 "healthy": True,
@@ -246,9 +238,7 @@ class KubernetesControlTests(unittest.TestCase):
                 )
             )
             with TestClient(app) as client:
-                status = client.get(
-                    "/admin/kubernetes/status", headers=ADMIN_HEADERS
-                ).json()
+                status = client.get("/admin/kubernetes/status", headers=ADMIN_HEADERS).json()
             publisher_type.assert_called_once()
             consumer_type.assert_not_called()
             self.assertEqual(status["transport"]["mode"], "kafka")

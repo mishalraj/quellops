@@ -35,6 +35,8 @@ spec:
               value: {{ required "clusterID is required" .Values.clusterID | quote }}
             - name: AIDBG_CLUSTER_NAME
               value: {{ default .Values.clusterID .Values.clusterName | quote }}
+            - name: AIDBG_K8S_ALLOWED_NAMESPACES
+              value: {{ join "," .Values.watchNamespaces | quote }}
             - name: AIDBG_K8S_AGENT_TOKEN
               valueFrom:
                 secretKeyRef:

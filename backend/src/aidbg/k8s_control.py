@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hmac
 import hashlib
+import hmac
 import re
 import secrets
 import threading
@@ -13,9 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .engine import ChangeEvent, K8sSignal, SignalStore
 from .incident_store import create_incident_store, is_meaningful_incident
-from .kafka_transport import KafkaEventConsumer, KafkaOutboxPublisher
 from .k8s_store import create_kubernetes_store
-
+from .kafka_transport import KafkaEventConsumer, KafkaOutboxPublisher
 
 CLUSTER_ID = re.compile(r"^[A-Za-z0-9_.:-]{3,160}$")
 NAMESPACE = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
@@ -203,11 +202,7 @@ def router(
     if event_transport not in {"database", "kafka"}:
         raise ValueError("AIDBG_EVENT_TRANSPORT must be database or kafka")
     enabled = bool(agent_token and admin_token and (db_path or database_url))
-    store = (
-        create_kubernetes_store(db_path, database_url, retention_events)
-        if enabled
-        else None
-    )
+    store = create_kubernetes_store(db_path, database_url, retention_events) if enabled else None
     incident_store = incident_store or (
         create_incident_store(db_path, database_url) if enabled else None
     )
@@ -307,7 +302,9 @@ def router(
             incident_store.initialize()
             stop.clear()
             if event_transport == "database":
-                thread = threading.Thread(target=bridge_loop, name="quellops-kubernetes-bridge", daemon=True)
+                thread = threading.Thread(
+                    target=bridge_loop, name="quellops-kubernetes-bridge", daemon=True
+                )
                 thread.start()
             else:
                 thread = None
@@ -347,8 +344,10 @@ def router(
     def heartbeat(body: HeartbeatInput, authorization: str | None = Header(default=None)):
         cluster_authorize(body.cluster_id, authorization)
         cluster = store.heartbeat(
-            body.cluster_id, queue_depth=body.queue_depth,
-            dropped_events=body.dropped_events, last_error=body.last_error,
+            body.cluster_id,
+            queue_depth=body.queue_depth,
+            dropped_events=body.dropped_events,
+            last_error=body.last_error,
         )
         if cluster is None:
             raise HTTPException(404, "Cluster is not registered")
@@ -418,9 +417,7 @@ def router(
         if consumer is not None:
             consumer_status = consumer.status()
             transport["consumer"] = consumer_status
-            transport["healthy"] = bool(
-                transport.get("healthy") and consumer_status.get("healthy")
-            )
+            transport["healthy"] = bool(transport.get("healthy") and consumer_status.get("healthy"))
         elif event_transport == "kafka":
             consumer_status = incident_store.worker_status(kafka_consumer_group) or {
                 "group": kafka_consumer_group,
@@ -428,9 +425,7 @@ def router(
                 "last_error": "consumer worker has not reported status",
             }
             transport["consumer"] = consumer_status
-            transport["healthy"] = bool(
-                transport.get("healthy") and consumer_status.get("healthy")
-            )
+            transport["healthy"] = bool(transport.get("healthy") and consumer_status.get("healthy"))
         return {
             "enabled": True,
             "clusters": len(clusters),

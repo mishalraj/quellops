@@ -134,9 +134,7 @@ class KubernetesStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def rotate_agent_token(
-        self, cluster_id: str, token_hash: str, *, grace_s: int = 600
-    ) -> bool:
+    def rotate_agent_token(self, cluster_id: str, token_hash: str, *, grace_s: int = 600) -> bool:
         now = time.time()
         with self._connect() as connection:
             cursor = connection.execute(
@@ -396,9 +394,7 @@ class KubernetesStore:
                     (cluster_id,),
                 ).fetchone()
             else:
-                row = connection.execute(
-                    "SELECT COUNT(*) AS count FROM k8s_events"
-                ).fetchone()
+                row = connection.execute("SELECT COUNT(*) AS count FROM k8s_events").fetchone()
         return int(row["count"])
 
 
@@ -418,9 +414,7 @@ class PostgresKubernetesStore(KubernetesStore):
 
     @contextmanager
     def _connect(self):
-        with self._psycopg.connect(
-            self.database_url, row_factory=self._dict_row
-        ) as connection:
+        with self._psycopg.connect(self.database_url, row_factory=self._dict_row) as connection:
             with connection.transaction():
                 yield connection
 
@@ -457,9 +451,7 @@ class PostgresKubernetesStore(KubernetesStore):
                 "CREATE INDEX IF NOT EXISTS idx_k8s_events_cluster_time "
                 "ON k8s_events(cluster_id, at_unix_ms DESC)"
             )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_k8s_events_id ON k8s_events(id)"
-            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_k8s_events_id ON k8s_events(id)")
             for column, definition in (
                 ("agent_token_hash", "TEXT"),
                 ("previous_agent_token_hash", "TEXT"),
@@ -531,9 +523,7 @@ class PostgresKubernetesStore(KubernetesStore):
             ).fetchone()
         return dict(row) if row else None
 
-    def rotate_agent_token(
-        self, cluster_id: str, token_hash: str, *, grace_s: int = 600
-    ) -> bool:
+    def rotate_agent_token(self, cluster_id: str, token_hash: str, *, grace_s: int = 600) -> bool:
         now = time.time()
         with self._connect() as connection:
             cursor = connection.execute(
@@ -662,9 +652,7 @@ class PostgresKubernetesStore(KubernetesStore):
                     (cluster_id,),
                 ).fetchone()
             else:
-                row = connection.execute(
-                    "SELECT COUNT(*) AS count FROM k8s_events"
-                ).fetchone()
+                row = connection.execute("SELECT COUNT(*) AS count FROM k8s_events").fetchone()
         return int(row["count"])
 
     def claim_transport_batch(

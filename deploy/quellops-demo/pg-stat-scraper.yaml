@@ -23,6 +23,11 @@ spec:
                   value: postgresql://aidbg:aidbg@postgres.quellops-demo.svc.cluster.local:5432/aidbg
                 - name: AIDBG_CHANGE_INGEST_URL
                   value: http://172.18.0.1:8088/ingest/change
+                - name: AIDBG_CHANGE_INGEST_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: quellops-api-tokens
+                      key: change-ingest-token
                 - name: PG_STAT_ENTITY
                   value: inventory
                 - name: PG_STAT_MIN_MEAN_MS

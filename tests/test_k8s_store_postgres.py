@@ -7,7 +7,6 @@ import uuid
 
 from aidbg.k8s_store import PostgresKubernetesStore
 
-
 DATABASE_URL = os.getenv("AIDBG_TEST_POSTGRES_URL", "")
 
 
@@ -59,14 +58,10 @@ class PostgresKubernetesStoreTests(unittest.TestCase):
         first_claim = self.store.claim_transport_batch("replica-a")
         self.assertEqual(len(first_claim), 1)
         self.assertEqual(replica.claim_transport_batch("replica-b"), [])
-        self.store.release_transport(
-            "replica-a", [first_claim[0]["id"]], "simulated retry"
-        )
+        self.store.release_transport("replica-a", [first_claim[0]["id"]], "simulated retry")
         retry_claim = replica.claim_transport_batch("replica-b")
         self.assertEqual(len(retry_claim), 1)
-        replica.mark_transport_complete(
-            "replica-b", [retry_claim[0]["id"]]
-        )
+        replica.mark_transport_complete("replica-b", [retry_claim[0]["id"]])
         self.assertEqual(self.store.count_transport_backlog(), 0)
 
 

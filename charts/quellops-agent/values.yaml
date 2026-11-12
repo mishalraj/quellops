@@ -1,7 +1,13 @@
 image:
-  repository: quellops/kubernetes-agent
+  repository: ghcr.io/mishalraj/quellops-kubernetes-agent
   tag: "0.3.0"
   pullPolicy: IfNotPresent
+
+# The Kubernetes API limits the agent to these namespaces. The portal can choose
+# a subset to send to QuellOps. Use ["*"] only when cluster-wide discovery and
+# node-pressure monitoring are intentionally required.
+watchNamespaces:
+  - default
 
 controlPlaneURL: "http://quellops:8088"
 clusterID: ""
@@ -37,4 +43,3 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-

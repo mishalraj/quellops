@@ -28,6 +28,7 @@ helm upgrade --install quellops-agent ./charts/quellops-agent \
   --namespace quellops-system --create-namespace \
   --set controlPlaneURL=https://quellops.example.com \
   --set clusterID=production \
+  --set 'watchNamespaces={production,checkout}' \
   --set credentials.bootstrapToken="$QUELLOPS_BOOTSTRAP_TOKEN"
 ```
 
@@ -43,9 +44,16 @@ flowchart LR
     KAFKA --> WORKERS[Independent consumers]
 ```
 
-The agent watches Nodes, Pods, Events, Deployments, StatefulSets, DaemonSets, HPAs,
+The default chart creates a Role and RoleBinding in each `watchNamespaces` entry, so
+the agent cannot read anything outside that installation allowlist. The portal chooses
+a subset of that allowlist for event delivery. Use `watchNamespaces={*}` only when an
+administrator explicitly accepts cluster-wide read access; this mode also enables node
+pressure monitoring.
+
+Within its allowed scope, the agent watches Pods, Events, Deployments, StatefulSets, DaemonSets, HPAs,
 Jobs, CronJobs, PVCs, and Ingresses. It detects workload degradation, failed jobs,
-node and scheduling pressure, storage failures, and missing ingress addresses. It
+scheduling pressure, storage failures, and missing ingress addresses. Cluster-wide
+mode additionally watches Nodes. It
 sends normalized metadata only. It does not read Secret or ConfigMap objects, collect
 container logs, execute commands, or modify cluster resources.
 
@@ -68,6 +76,6 @@ Set `AIDBG_K8S_RETENTION_EVENTS` to choose the number of transported events reta
 per cluster (default `5000`, range `100` to `1000000`). Unsent events are never removed
 by retention cleanup.
 
-The default RBAC role permits read-only discovery and watches only the resource kinds
-listed above. Production installations should expose the backend over HTTPS and
+The default RBAC Roles permit read-only discovery only in configured namespaces and
+watch only the resource kinds listed above. Production installations should expose the backend over HTTPS and
 restrict network access to the agent endpoint.
