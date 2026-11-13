@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from .change_ingest import github_push_to_change_events, load_service_map
 from .config import Settings
+from .database_control import router as database_control_router
 from .engine import ChangeEvent, K8sSignal
 from .explain_llm import explain_incident
 from .incident_store import create_incident_store, is_meaningful_incident
@@ -101,6 +102,16 @@ def create_app(stats: StatsStore, settings: Settings) -> FastAPI:
             incident_builder=lambda: stats.signals.build_incident(
                 settings.current_window_s, settings.baseline_window_s
             ),
+        )
+    )
+    app.include_router(
+        database_control_router(
+            admin_token=settings.log_admin_token,
+            master_key=settings.log_master_key,
+            db_path=settings.control_db_path,
+            signals=stats.signals,
+            retention=settings.database_signal_retention,
+            database_url=settings.control_database_url,
         )
     )
     service_map = load_service_map(Path(settings.service_map_path))

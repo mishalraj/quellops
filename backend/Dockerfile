@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 WORKDIR /app
 COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY backend/requirements-databases.txt /app/requirements-databases.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt -r /app/requirements-databases.txt
 COPY backend/src /app/backend/src
 COPY backend/service_map.yaml /app/backend/service_map.yaml
 RUN groupadd --system quellops && useradd --system --gid quellops --home-dir /app quellops \

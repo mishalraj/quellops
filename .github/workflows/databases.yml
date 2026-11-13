@@ -1,0 +1,16 @@
+name: databases
+on:
+  push:
+    paths: ["backend/**", "tests/test_database*.py", ".github/workflows/databases.yml"]
+  pull_request:
+    paths: ["backend/**", "tests/test_database*.py", ".github/workflows/databases.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r backend/requirements.txt ruff
+      - run: PYTHONPATH=backend/src python -m unittest discover -s tests -p 'test_database*.py'
+      - run: ruff check backend/src/aidbg/database_*.py tests/test_database*.py

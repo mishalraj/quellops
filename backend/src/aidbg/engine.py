@@ -90,6 +90,13 @@ _CHANGE_KIND_WEIGHT: dict[str, float] = {
     "code.push": 1.05,
     "config.changed": 0.95,
     "db.slow_query_stat": 0.85,
+    "db.replica_lag": 1.05,
+    "db.replication_lag": 1.05,
+    "db.throttled_requests": 1.05,
+    "db.storage_percent": 1.0,
+    "db.waiting_sessions": 0.95,
+    "db.longest_query": 0.95,
+    "db.cdc_change_rate": 0.75,
 }
 
 

@@ -38,6 +38,7 @@ class Settings:
     k8s_agent_token: str = os.getenv("AIDBG_K8S_AGENT_TOKEN", "")
     k8s_retention_events: int = int(os.getenv("AIDBG_K8S_RETENTION_EVENTS", "5000"))
     incident_retention: int = int(os.getenv("AIDBG_INCIDENT_RETENTION", "500"))
+    database_signal_retention: int = int(os.getenv("AIDBG_DATABASE_SIGNAL_RETENTION", "5000"))
     # Optional Kafka-compatible event stream. Database mode remains zero-setup.
     event_transport: str = os.getenv("AIDBG_EVENT_TRANSPORT", "database")
     kafka_bootstrap_servers: str = os.getenv("AIDBG_KAFKA_BOOTSTRAP_SERVERS", "")
