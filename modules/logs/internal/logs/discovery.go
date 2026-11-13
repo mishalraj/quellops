@@ -249,6 +249,9 @@ func (s *Service) discoverCloudWatch(ctx context.Context, cfg *SourceConfig, bud
 }
 
 func (s *Service) discoverDatadog(ctx context.Context, cfg *SourceConfig, budget *fetchBudget, headers http.Header, result *DiscoveryResult) error {
+	if err := addDatadogHeaders(cfg, headers); err != nil {
+		return err
+	}
 	for _, facet := range []string{"service", "env", "host", "kube_namespace"} {
 		if budget.requests >= budget.maxRequests {
 			break

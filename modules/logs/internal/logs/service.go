@@ -278,16 +278,9 @@ func (s *Service) fetch(ctx context.Context, source string, start, end float64, 
 			}
 		}
 	case "datadog":
-		apiKey, err := cfg.credential("api_key", cfg.APIKeyEnv, true)
-		if err != nil {
+		if err := addDatadogHeaders(cfg, headers); err != nil {
 			return FetchResult{}, err
 		}
-		appKey, err := cfg.credential("app_key", cfg.AppKeyEnv, true)
-		if err != nil {
-			return FetchResult{}, err
-		}
-		headers.Set("DD-API-KEY", apiKey)
-		headers.Set("DD-APPLICATION-KEY", appKey)
 		cursor := ""
 		for len(records) < limit {
 			page := map[string]any{"limit": min(1000, limit-len(records))}
@@ -491,6 +484,20 @@ func requestHeaders(cfg *SourceConfig) (http.Header, error) {
 		}
 	}
 	return headers, nil
+}
+
+func addDatadogHeaders(cfg *SourceConfig, headers http.Header) error {
+	apiKey, err := cfg.credential("api_key", cfg.APIKeyEnv, true)
+	if err != nil {
+		return err
+	}
+	appKey, err := cfg.credential("app_key", cfg.AppKeyEnv, true)
+	if err != nil {
+		return err
+	}
+	headers.Set("DD-API-KEY", apiKey)
+	headers.Set("DD-APPLICATION-KEY", appKey)
+	return nil
 }
 
 func (s *Service) rawRequest(ctx context.Context, cfg *SourceConfig, budget *fetchBudget, headers http.Header, method, path string, params url.Values, body []byte, contentType string) ([]byte, error) {

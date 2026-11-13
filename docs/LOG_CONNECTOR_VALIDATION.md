@@ -10,6 +10,16 @@ Run the local Loki validation:
 ./scripts/test_loki_connector_live.sh
 ```
 
+Run provider-compatible Splunk and Datadog API simulations:
+
+```bash
+./scripts/test_hosted_connectors_simulated.sh
+```
+
+These simulations validate request paths, authentication headers, discovery,
+generated scopes, response parsing, and bounded fetching. They do not replace a
+final test against the hosted products.
+
 For a hosted provider, set `QUELLOPS_LIVE_<PROVIDER>` to JSON with `values` and
 `credentials`, then run:
 
@@ -27,4 +37,3 @@ export QUELLOPS_LIVE_DATADOG='{"values":{"url":"https://api.datadoghq.com"},"cre
 Supported names are `LOKI`, `ELASTICSEARCH`, `OPENSEARCH`, `SPLUNK`, `GRAYLOG`,
 `DATADOG`, `CLOUDWATCH`, `GCP`, and `AZURE`. Provider secrets stay in environment
 variables and are never written to test output.
-
