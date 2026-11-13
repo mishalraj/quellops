@@ -77,5 +77,15 @@ per cluster (default `5000`, range `100` to `1000000`). Unsent events are never 
 by retention cleanup.
 
 The default RBAC Roles permit read-only discovery only in configured namespaces and
-watch only the resource kinds listed above. Production installations should expose the backend over HTTPS and
-restrict network access to the agent endpoint.
+watch only the resource kinds listed above. Production installations should expose the
+backend over HTTPS and restrict network access to the agent endpoint.
+
+Run the reusable multi-node outage and restart simulation before rollout:
+
+```bash
+QUELLOPS_SOAK_DURATION_SECONDS=180 ./scripts/test_kubernetes_soak.sh
+```
+
+The test creates an isolated three-node Kind cluster, deploys the real Helm chart
+and agent, interrupts delivery, restarts the agent with queued events on its PVC,
+restores delivery, and verifies that the queue drains without drops.
