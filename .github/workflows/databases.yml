@@ -7,6 +7,19 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: quellops
+          POSTGRES_USER: quellops
+          POSTGRES_PASSWORD: ci-test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U quellops -d quellops"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -14,3 +27,4 @@ jobs:
       - run: pip install -r backend/requirements.txt ruff
       - run: PYTHONPATH=backend/src python -m unittest discover -s tests -p 'test_database*.py'
       - run: ruff check backend/src/aidbg/database_*.py tests/test_database*.py
+      - run: PYTHONPATH=backend/src DATABASE_TEST_URL=postgresql://quellops:ci-test@127.0.0.1:5432/quellops DATABASE_SOAK_SECONDS=45 python tests/database_multi_replica_soak.py

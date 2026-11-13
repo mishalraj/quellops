@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from .database_analysis import history_series
 from .database_connectors import (
     ENGINE_CATALOG,
     PROVIDER_CATALOG,
@@ -14,6 +15,7 @@ from .database_connectors import (
     connector_for,
     validate_source,
 )
+from .database_discovery import discover_cloud_resources
 from .database_store import DatabaseStore, create_database_store
 from .database_watcher import DatabaseWatcher
 from .engine import ChangeEvent, SignalStore
@@ -32,6 +34,13 @@ class SourceInput(BaseModel):
 class WatcherInput(BaseModel):
     enabled: bool = False
     interval_s: int = Field(default=60, ge=15, le=86400)
+
+
+class DiscoveryInput(BaseModel):
+    provider: str
+    engine: str
+    config: dict = Field(default_factory=dict)
+    credentials: dict[str, str] = Field(default_factory=dict)
 
 
 def router(
@@ -121,6 +130,22 @@ def router(
         authorize(authorization)
         return {"sources": required_store().list_sources(), "watchers": required_store().list_watchers()}
 
+    @result.post("/discover")
+    def discover_resources(payload: DiscoveryInput, authorization: str | None = Header(default=None)):
+        authorize(authorization)
+        if payload.provider not in PROVIDER_CATALOG or payload.provider == "self_hosted":
+            raise HTTPException(400, "cloud resource discovery requires AWS, GCP, Azure, or OCI")
+        if payload.engine not in ENGINE_CATALOG:
+            raise HTTPException(400, "unsupported database engine")
+        if len(json.dumps(payload.config)) > 65_536 or len(json.dumps(payload.credentials)) > 65_536:
+            raise HTTPException(413, "discovery configuration is too large")
+        try:
+            return {"resources": discover_cloud_resources(
+                payload.provider, payload.engine, payload.config, payload.credentials
+            )}
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @result.put("/sources/{name}")
     def save_source(name: str, payload: SourceInput, authorization: str | None = Header(default=None)):
         authorize(authorization)
@@ -191,5 +216,11 @@ def router(
     def recent_signals(source: str | None = None, limit: int = 100, authorization: str | None = Header(default=None)):
         authorize(authorization)
         return {"signals": required_store().list_signals(source, max(1, min(limit, 1000)))}
+
+    @result.get("/history")
+    def history(source: str | None = None, limit: int = 1000, authorization: str | None = Header(default=None)):
+        authorize(authorization)
+        items = required_store().list_signals(source, max(10, min(limit, 5000)))
+        return {"series": history_series(items)}
 
     return result

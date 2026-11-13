@@ -648,6 +648,7 @@ class CloudMetricsConnector:
         resource_id = str(self.config["resource_id"])
         points: list[dict[str, Any]] = []
         service_defaults = {
+            "alloydb": ("alloydb.googleapis.com/database/", "instance_id", ["cpu/utilization", "memory/quota", "postgresql/num_backends"]),
             "spanner": ("spanner.googleapis.com/instance/", "instance_id", ["cpu/utilization_by_priority", "node_count", "storage/used_bytes"]),
             "firestore": ("firestore.googleapis.com/document/", "database_id", ["read_count", "write_count", "delete_count"]),
             "memorystore-redis": ("redis.googleapis.com/stats/", "instance_id", ["cpu_utilization", "memory/usage_ratio", "clients/connected"]),

@@ -5,6 +5,7 @@ import time
 import uuid
 from collections.abc import Callable
 
+from .database_analysis import apply_baseline
 from .database_connectors import connector_for
 from .database_store import DatabaseStore
 
@@ -69,7 +70,8 @@ class DatabaseWatcher:
                 source["access_mode"], source["config"], source["credentials"],
             )
             result = connector.collect()
-            signals = [signal.as_dict() for signal in result.signals]
+            history = self.store.list_signals(name, limit=1000)
+            signals = [apply_baseline(signal.as_dict(), history) for signal in result.signals]
             self.store.add_signals(name, signals, self.retention)
             self.store.succeeded(
                 name, self.owner, time.time(), result.requests, result.rows,

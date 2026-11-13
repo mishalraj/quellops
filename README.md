@@ -62,7 +62,7 @@ modules continue to work without it.
 | Logs | Discovers provider scopes, fetches bounded logs, detects failure patterns, and tracks API usage and estimated cost | Go / gRPC |
 | Kubernetes | Watches approved cluster scope with durable delivery, per-cluster credentials, and optional Kafka transport | Go agent / Python control API |
 | Tracing | Receives OTLP traces and builds service relationships | Python |
-| Database | Collects bounded health evidence from cloud APIs, verified read replicas, or CDC | AWS / GCP / Azure / OCI and common SQL / NoSQL engines |
+| Database | Discovers managed resources, learns historical baselines, and collects bounded evidence from cloud APIs, verified replicas, or CDC | AWS / GCP / Azure / OCI and common SQL / NoSQL engines |
 | Changes | Records deployments, code pushes, migrations, and configuration changes | Python |
 | Web UI | Shows incidents and configures log sources and watchers | Static dashboard |
 | Demo | Provides a small service mesh for testing incidents | Python services / Kubernetes |

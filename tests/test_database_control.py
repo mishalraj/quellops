@@ -71,6 +71,21 @@ class DatabaseControlTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("primary", response.json()["detail"])
 
+    def test_resource_discovery_and_history(self):
+        discovered = self.client.post(
+            "/admin/databases/discover", headers=self.headers,
+            json={
+                "provider": "aws", "engine": "rds-postgresql",
+                "config": {"test_resources": [{"id": "orders-ro", "name": "Orders"}]},
+                "credentials": {},
+            },
+        )
+        self.assertEqual(discovered.status_code, 200, discovered.text)
+        self.assertEqual(discovered.json()["resources"][0]["id"], "orders-ro")
+        history = self.client.get("/admin/databases/history", headers=self.headers)
+        self.assertEqual(history.status_code, 200)
+        self.assertIn("series", history.json())
+
 
 if __name__ == "__main__":
     unittest.main()
