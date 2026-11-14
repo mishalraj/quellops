@@ -55,7 +55,9 @@ def history_series(signals: list[dict[str, Any]], max_points: int = 120) -> list
     grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for item in reversed(signals):
         if isinstance(item.get("value"), (int, float)):
-            grouped[(str(item.get("source")), str(item.get("signal")), str(item.get("unit")))].append(item)
+            grouped[
+                (str(item.get("source")), str(item.get("signal")), str(item.get("unit")))
+            ].append(item)
     output = []
     for (source, metric, unit), items in sorted(grouped.items()):
         items = items[-max_points:]
@@ -66,7 +68,11 @@ def history_series(signals: list[dict[str, Any]], max_points: int = 120) -> list
                 "metric": metric,
                 "unit": unit,
                 "points": [
-                    {"at_unix_ms": int(item["observed_at_unix_ms"]), "value": float(item["value"]), "severity": item.get("severity", "info")}
+                    {
+                        "at_unix_ms": int(item["observed_at_unix_ms"]),
+                        "value": float(item["value"]),
+                        "severity": item.get("severity", "info"),
+                    }
                     for item in items
                 ],
                 "baseline": statistics.median(values[:-1] or values),

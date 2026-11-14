@@ -6,6 +6,7 @@ from aidbg.database_connectors import (
     CDCConnector,
     CloudMetricsConnector,
     DatabaseSafetyError,
+    cdc_operation,
     connector_for,
     ensure_select_only,
     fingerprint,
@@ -15,6 +16,11 @@ from aidbg.database_connectors import (
 
 
 class DatabaseConnectorSafetyTests(unittest.TestCase):
+    def test_cdc_operation_reads_debezium_and_flat_envelopes(self):
+        self.assertEqual(cdc_operation({"payload": {"op": "c"}}), "c")
+        self.assertEqual(cdc_operation({"operationType": "insert"}), "insert")
+        self.assertEqual(cdc_operation({"payload": None}), "unknown")
+
     def test_provider_metrics_are_normalized_and_ranked(self):
         self.assertEqual(normalize_metric("ReplicaLag", 70), ("replica_lag", "critical"))
         self.assertEqual(normalize_metric("CPUUtilization", 85), ("cpu_percent", "warning"))

@@ -86,6 +86,18 @@ class DatabaseStore:
                     ON database_signals(source_name, observed_at_unix_ms DESC);
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(database_sources)").fetchall()
+            }
+            if "credential_version" not in columns:
+                connection.execute(
+                    "ALTER TABLE database_sources ADD COLUMN credential_version INTEGER NOT NULL DEFAULT 1"
+                )
+            if "credentials_rotated_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE database_sources ADD COLUMN credentials_rotated_at REAL"
+                )
         os.chmod(self.path, 0o600)
 
     def _encrypt(self, name: str, credentials: dict[str, str]) -> tuple[bytes, bytes]:
@@ -101,8 +113,7 @@ class DatabaseStore:
         )
         credentials = json.loads(raw)
         if not isinstance(credentials, dict) or not all(
-            isinstance(key, str) and isinstance(value, str)
-            for key, value in credentials.items()
+            isinstance(key, str) and isinstance(value, str) for key, value in credentials.items()
         ):
             raise ValueError("stored database credentials are invalid")
         return credentials
@@ -118,6 +129,8 @@ class DatabaseStore:
             "credential_keys": sorted(key for key, value in credentials.items() if value),
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+            "credential_version": int(row["credential_version"]),
+            "credentials_rotated_at": row["credentials_rotated_at"],
         }
 
     def list_sources(self) -> list[dict]:
@@ -136,6 +149,32 @@ class DatabaseStore:
         result = self._public(row, credentials)
         if include_credentials:
             result["credentials"] = credentials
+        return result
+
+    def rotate_credentials(self, name: str, credentials: dict[str, str]) -> dict:
+        if not credentials or not all(
+            isinstance(key, str) and isinstance(value, str) and value
+            for key, value in credentials.items()
+        ):
+            raise ValueError("replacement credentials must contain non-empty string values")
+        nonce, ciphertext = self._encrypt(name, credentials)
+        now = time.time()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE database_sources SET
+                    secret_nonce=?, secret_ciphertext=?,
+                    credential_version=credential_version+1,
+                    credentials_rotated_at=?, updated_at=?
+                WHERE name=?
+                """,
+                (nonce, ciphertext, now, now, name),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError("database source was not found")
+        result = self.get_source(name, include_credentials=False)
+        if result is None:
+            raise RuntimeError("rotated database source could not be loaded")
         return result
 
     def upsert_source(
@@ -242,7 +281,9 @@ class DatabaseStore:
 
     def list_watchers(self) -> list[dict]:
         with self._connect() as connection:
-            rows = connection.execute("SELECT * FROM database_watchers ORDER BY source_name").fetchall()
+            rows = connection.execute(
+                "SELECT * FROM database_watchers ORDER BY source_name"
+            ).fetchall()
         return [self._watcher(row) for row in rows]
 
     def claim_due(self, owner: str, now: float, lease_s: int = 90) -> list[str]:
@@ -422,7 +463,9 @@ class PostgresDatabaseStore(DatabaseStore):
                 name TEXT PRIMARY KEY, provider TEXT NOT NULL, engine TEXT NOT NULL,
                 access_mode TEXT NOT NULL, service TEXT NOT NULL DEFAULT '', config_json TEXT NOT NULL,
                 secret_nonce BYTEA NOT NULL, secret_ciphertext BYTEA NOT NULL,
-                created_at DOUBLE PRECISION NOT NULL, updated_at DOUBLE PRECISION NOT NULL)""",
+                created_at DOUBLE PRECISION NOT NULL, updated_at DOUBLE PRECISION NOT NULL,
+                credential_version INTEGER NOT NULL DEFAULT 1,
+                credentials_rotated_at DOUBLE PRECISION)""",
             """CREATE TABLE IF NOT EXISTS database_watchers (
                 source_name TEXT PRIMARY KEY REFERENCES database_sources(name) ON DELETE CASCADE,
                 enabled INTEGER NOT NULL DEFAULT 0, interval_s INTEGER NOT NULL DEFAULT 60,
@@ -441,6 +484,12 @@ class PostgresDatabaseStore(DatabaseStore):
         with self._connect() as connection:
             for statement in statements:
                 connection.execute(statement)
+            connection.execute(
+                "ALTER TABLE database_sources ADD COLUMN IF NOT EXISTS credential_version INTEGER NOT NULL DEFAULT 1"
+            )
+            connection.execute(
+                "ALTER TABLE database_sources ADD COLUMN IF NOT EXISTS credentials_rotated_at DOUBLE PRECISION"
+            )
 
 
 def create_database_store(path: str, master_key: str, database_url: str = "") -> DatabaseStore:

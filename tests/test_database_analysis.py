@@ -30,10 +30,21 @@ class DatabaseAnalysisTests(unittest.TestCase):
 
     def test_history_series_is_chronological(self):
         signals = [
-            {"source": "orders", "signal": "cpu", "unit": "percent", "value": 30,
-             "observed_at_unix_ms": 3, "evidence": {"historical_anomaly": True}},
-            {"source": "orders", "signal": "cpu", "unit": "percent", "value": 20,
-             "observed_at_unix_ms": 2},
+            {
+                "source": "orders",
+                "signal": "cpu",
+                "unit": "percent",
+                "value": 30,
+                "observed_at_unix_ms": 3,
+                "evidence": {"historical_anomaly": True},
+            },
+            {
+                "source": "orders",
+                "signal": "cpu",
+                "unit": "percent",
+                "value": 20,
+                "observed_at_unix_ms": 2,
+            },
         ]
         series = history_series(signals)
         self.assertEqual([point["value"] for point in series[0]["points"]], [20.0, 30.0])

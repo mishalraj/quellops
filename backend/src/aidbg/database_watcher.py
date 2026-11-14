@@ -30,7 +30,9 @@ class DatabaseWatcher:
         if self._thread is not None:
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, name="quellops-database-watcher", daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name="quellops-database-watcher", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -60,35 +62,100 @@ class DatabaseWatcher:
 
     def _collect_claimed(self, name: str) -> dict:
         now = time.time()
+        source: dict | None = None
         try:
             source = self.store.get_source(name)
             if source is None:
                 raise ValueError("database source is not configured")
             self.store.started(name, self.owner, now)
             connector = connector_for(
-                source["name"], source["provider"], source["engine"],
-                source["access_mode"], source["config"], source["credentials"],
+                source["name"],
+                source["provider"],
+                source["engine"],
+                source["access_mode"],
+                source["config"],
+                source["credentials"],
             )
             result = connector.collect()
             history = self.store.list_signals(name, limit=1000)
             signals = [apply_baseline(signal.as_dict(), history) for signal in result.signals]
             self.store.add_signals(name, signals, self.retention)
             self.store.succeeded(
-                name, self.owner, time.time(), result.requests, result.rows,
-                result.bytes_received, result.estimated_cost_usd,
+                name,
+                self.owner,
+                time.time(),
+                result.requests,
+                result.rows,
+                result.bytes_received,
+                result.estimated_cost_usd,
             )
+            health_signal = {
+                "source": name,
+                "provider": source["provider"],
+                "engine": source["engine"],
+                "resource": source["config"].get("resource_id")
+                or source["config"].get("host")
+                or name,
+                "database": source["config"].get("database") or "",
+                "signal": "connection_health",
+                "severity": "info",
+                "value": 1.0,
+                "unit": "boolean",
+                "observed_at_unix_ms": int(time.time() * 1000),
+                "evidence": {"healthy": True, "consecutive_failures": 0},
+            }
             for signal in signals:
                 if self.observer is not None:
                     try:
                         self.observer(signal)
                     except Exception:
                         pass
+            if self.observer is not None:
+                try:
+                    self.observer(health_signal)
+                except Exception:
+                    pass
             return {
-                "ok": True, "source": name, "signals": len(signals),
-                "requests": result.requests, "rows": result.rows,
+                "ok": True,
+                "source": name,
+                "signals": len(signals),
+                "requests": result.requests,
+                "rows": result.rows,
                 "duration_ms": result.duration_ms,
                 "estimated_cost_usd": result.estimated_cost_usd,
             }
         except Exception as exc:
             self.store.failed(name, self.owner, str(exc), time.time())
+            status = self.store.get_watcher(name) or {}
+            if self.observer is not None:
+                try:
+                    self.observer(
+                        {
+                            "source": name,
+                            "provider": str((source or {}).get("provider") or "unknown"),
+                            "engine": str((source or {}).get("engine") or "unknown"),
+                            "resource": str(
+                                (source or {}).get("config", {}).get("resource_id")
+                                or (source or {}).get("config", {}).get("host")
+                                or name
+                            ),
+                            "database": str((source or {}).get("config", {}).get("database") or ""),
+                            "signal": "connection_health",
+                            "severity": "critical"
+                            if int(status.get("consecutive_failures") or 0) >= 3
+                            else "warning",
+                            "value": 0.0,
+                            "unit": "boolean",
+                            "observed_at_unix_ms": int(time.time() * 1000),
+                            "evidence": {
+                                "healthy": False,
+                                "error": str(exc)[:500],
+                                "consecutive_failures": int(
+                                    status.get("consecutive_failures") or 0
+                                ),
+                            },
+                        }
+                    )
+                except Exception:
+                    pass
             return {"ok": False, "source": name, "error": str(exc)}

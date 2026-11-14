@@ -162,6 +162,22 @@ class LogSignal:
     error: str | None = None
 
 
+@dataclass
+class DatabaseEvidence:
+    source: str
+    provider: str
+    engine: str
+    service: str
+    resource: str
+    database: str
+    signal: str
+    severity: str
+    value: float | None
+    unit: str
+    observed_at_unix_ms: int
+    evidence: dict[str, Any]
+
+
 class SignalStore:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -170,6 +186,7 @@ class SignalStore:
         self._k8s_events: deque[K8sSignal] = deque()
         self._change_events: deque[ChangeEvent] = deque()
         self._log_signals: deque[LogSignal] = deque()
+        self._database_signals: deque[DatabaseEvidence] = deque()
         self._db_slow_threshold_ms: float = 100.0
         self._change_horizon_s: int = 900
 
@@ -195,6 +212,8 @@ class SignalStore:
             self._change_events.popleft()
         while self._log_signals and self._log_signals[0].at_unix_ms < cutoff_ms:
             self._log_signals.popleft()
+        while self._database_signals and self._database_signals[0].observed_at_unix_ms < cutoff_ms:
+            self._database_signals.popleft()
 
     def add_spans(
         self, span_points: list[SpanPoint], edges: list[tuple[float, str, str, float, bool]]
@@ -223,6 +242,12 @@ class SignalStore:
             self._log_signals.append(signal)
             self._trim(now_s)
 
+    def add_database_signal(self, signal: DatabaseEvidence) -> None:
+        now_s = time.time()
+        with self._lock:
+            self._database_signals.append(signal)
+            self._trim(now_s)
+
     def recent_change_events(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
             items = list(self._change_events)[-limit:]
@@ -237,6 +262,178 @@ class SignalStore:
         with self._lock:
             items = list(self._log_signals)[-limit:]
         return [asdict(i) for i in items]
+
+    def recent_database_signals(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            items = list(self._database_signals)[-limit:]
+        return [asdict(i) for i in items]
+
+    def database_signal_candidates(
+        self, now_ms: int, affected_entities: set[str]
+    ) -> list[dict[str, Any]]:
+        recent = [
+            signal
+            for signal in self.recent_database_signals(limit=300)
+            if now_ms - int(signal["observed_at_unix_ms"]) <= 1_800_000
+        ]
+        latest: dict[tuple[str, str], dict[str, Any]] = {}
+        for signal in recent:
+            key = (str(signal.get("source") or ""), str(signal.get("signal") or ""))
+            latest[key] = signal
+        candidates: list[dict[str, Any]] = []
+        for signal in latest.values():
+            severity = str(signal.get("severity") or "info")
+            evidence = dict(signal.get("evidence") or {})
+            if severity not in {"warning", "critical"} and not evidence.get("historical_anomaly"):
+                continue
+            age_s = max(0.0, (now_ms - int(signal["observed_at_unix_ms"])) / 1000.0)
+            entity = str(signal.get("service") or signal.get("resource") or signal["source"])
+            base = 1.02 if severity == "critical" else 0.82
+            if signal.get("signal") == "connection_health":
+                base = 1.15 if severity == "critical" else 0.9
+            score = _time_decay_score(age_s, 1800, base)
+            if entity in affected_entities:
+                score += 0.22
+            candidates.append(
+                {
+                    "type": f"db_{signal['signal']}",
+                    "entity": entity,
+                    "score": min(1.35, score),
+                    "evidence": {
+                        "source": signal.get("source"),
+                        "provider": signal.get("provider"),
+                        "engine": signal.get("engine"),
+                        "resource": signal.get("resource"),
+                        "database": signal.get("database"),
+                        "severity": severity,
+                        "value": signal.get("value"),
+                        "unit": signal.get("unit"),
+                        **evidence,
+                    },
+                }
+            )
+        candidates.sort(key=lambda item: item["score"], reverse=True)
+        return candidates[:8]
+
+    def incident_timeline(
+        self,
+        now_ms: int,
+        anomalies: list[dict[str, Any]],
+        top_causes: list[dict[str, Any]],
+        log_evidence: list[dict[str, Any]],
+        database_evidence: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Merge bounded module evidence into one explainable incident sequence."""
+        anomaly_services = {
+            str(item.get("entity") or "") for item in anomalies if item.get("entity")
+        }
+        cause_services = {
+            str(item.get("entity") or "") for item in top_causes if item.get("entity")
+        }
+
+        def reasons(service: str) -> list[str]:
+            matched = ["within_incident_window"]
+            if service and service in anomaly_services:
+                matched.append("same_service_as_trace_anomaly")
+            if service and service in cause_services:
+                matched.append("same_service_as_ranked_cause")
+            return matched
+
+        rows: list[dict[str, Any]] = []
+        for anomaly in anomalies:
+            service = str(anomaly.get("entity") or "")
+            rows.append(
+                {
+                    "at_unix_ms": int(float(anomaly.get("start_unix_s") or now_ms / 1000) * 1000),
+                    "module": "traces",
+                    "type": str(anomaly.get("kind") or "trace_anomaly"),
+                    "service": service,
+                    "severity": "critical"
+                    if float(anomaly.get("magnitude") or 0) >= 2
+                    else "warning",
+                    "summary": f"Trace anomaly detected for {service or 'unknown service'}",
+                    "correlation_reasons": reasons(service),
+                }
+            )
+        for event in self.recent_k8s_events(limit=100):
+            at_ms = int(event.get("at_unix_ms") or 0)
+            if now_ms - at_ms > 1_800_000:
+                continue
+            fields = event.get("fields") or {}
+            service = str(
+                fields.get("service") or fields.get("involved_name") or event.get("name") or ""
+            )
+            summary = str(
+                event.get("reason")
+                or event.get("message")
+                or event.get("type")
+                or "Kubernetes event"
+            )
+            rows.append(
+                {
+                    "at_unix_ms": at_ms,
+                    "module": "kubernetes",
+                    "type": str(event.get("type") or "k8s_event"),
+                    "service": service,
+                    "severity": "warning",
+                    "summary": summary[:240],
+                    "correlation_reasons": reasons(service),
+                }
+            )
+        for signal in log_evidence:
+            service = str(signal.get("service") or signal.get("source") or "")
+            summary = str(
+                signal.get("error")
+                or ", ".join(signal.get("reasons") or [])
+                or signal.get("kind")
+                or "Log signal"
+            )
+            rows.append(
+                {
+                    "at_unix_ms": int(signal.get("at_unix_ms") or now_ms),
+                    "module": "logs",
+                    "type": str(signal.get("kind") or "log_signal"),
+                    "service": service,
+                    "severity": "warning",
+                    "summary": summary[:240],
+                    "correlation_reasons": reasons(service),
+                }
+            )
+        for signal in database_evidence:
+            service = str(
+                signal.get("service") or signal.get("resource") or signal.get("source") or ""
+            )
+            value = signal.get("value")
+            value_text = "" if value is None else f" = {value} {signal.get('unit') or ''}".rstrip()
+            rows.append(
+                {
+                    "at_unix_ms": int(signal.get("observed_at_unix_ms") or now_ms),
+                    "module": "database",
+                    "type": str(signal.get("signal") or "database_signal"),
+                    "service": service,
+                    "severity": str(signal.get("severity") or "warning"),
+                    "summary": f"{signal.get('signal') or 'Database signal'}{value_text}",
+                    "correlation_reasons": reasons(service),
+                }
+            )
+        for event in self.recent_change_events(limit=100):
+            at_ms = int(event.get("at_unix_ms") or 0)
+            if now_ms - at_ms > 1_800_000:
+                continue
+            service = str(event.get("entity") or "")
+            rows.append(
+                {
+                    "at_unix_ms": at_ms,
+                    "module": "changes",
+                    "type": str(event.get("kind") or "change"),
+                    "service": service,
+                    "severity": "info",
+                    "summary": f"{event.get('kind') or 'Change'} on {service or 'unknown service'}",
+                    "correlation_reasons": reasons(service),
+                }
+            )
+        rows.sort(key=lambda item: (item["at_unix_ms"], item["module"]))
+        return rows[-80:]
 
     def log_signal_candidates(
         self, now_ms: int, affected_entities: set[str]
@@ -849,6 +1046,7 @@ class SignalStore:
         candidates.extend(db_candidates)
         candidates.extend(change_candidates)
         candidates.extend(self.log_signal_candidates(now_ms, affected_entities))
+        candidates.extend(self.database_signal_candidates(now_ms, affected_entities))
         candidates.sort(key=lambda x: (x["score"], x.get("tie_breaker", 0.0)), reverse=True)
         if anomalies and not candidates:
             # Keep incident deterministic even when no strong candidate exists yet.
@@ -866,12 +1064,23 @@ class SignalStore:
             for signal in self.recent_log_signals(limit=30)
             if signal.get("reasons") or signal.get("error")
         ][-20:]
+        database_evidence = [
+            signal
+            for signal in self.recent_database_signals(limit=50)
+            if signal.get("severity") in {"warning", "critical"}
+            or signal.get("evidence", {}).get("historical_anomaly")
+        ][-20:]
+        timeline = self.incident_timeline(
+            now_ms, anomalies, top_causes, log_evidence, database_evidence
+        )
         return {
             "generated_at_unix_ms": now_ms,
             "anomalies": anomalies,
             "top_causes": top_causes,
             "graph_snapshot": graph,
             "log_evidence": log_evidence,
+            "database_evidence": database_evidence,
+            "timeline": timeline,
         }
 
     def why_service_slow(

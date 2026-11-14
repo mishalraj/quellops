@@ -688,11 +688,31 @@
 
       <div class="section">
         <div class="section-head">
+          <h2>Incident timeline</h2>
+          <span>Traces, Kubernetes, logs, databases, and changes in time order</span>
+        </div>
+        <div class="panel">
+          <div class="anom-list" id="incidentTimeline"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
           <h2>Log evidence</h2>
           <span>Watcher signals and bounded investigation samples</span>
         </div>
         <div class="panel">
           <div class="anom-list" id="logEvidence"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <h2>Database evidence</h2>
+          <span>Replica health, provider metrics, CDC activity, and learned anomalies</span>
+        </div>
+        <div class="panel">
+          <div class="anom-list" id="databaseEvidence"></div>
         </div>
       </div>
 
@@ -1052,6 +1072,47 @@
           "<div class='entity'>" + escapeHtml(title) + "</div>" +
           "<div class='ev'>" + escapeHtml(detail) + " · " + Number(signal.records || 0) + " record(s)</div>" +
           samples + "</div>";
+      }).join("");
+    }
+
+    function renderDatabaseEvidence(list) {
+      const el = $("databaseEvidence");
+      if (!list.length) {
+        el.innerHTML = "<div class='empty-state'>No warning or critical database evidence has been detected.</div>";
+        return;
+      }
+      el.innerHTML = list.slice().reverse().map((signal) => {
+        const evidence = signal.evidence || {};
+        const title = signal.service || signal.resource || signal.source || "database";
+        const value = signal.value == null ? "—" : String(signal.value) + (signal.unit ? " " + signal.unit : "");
+        const detail = evidence.error ||
+          (evidence.historical_anomaly ? "Historical baseline anomaly" : "Database health signal");
+        return "<div class='cause-card' style='width:100%'>" +
+          "<div class='tag'>" + escapeHtml(signal.severity || "info") + " · " +
+          escapeHtml(signal.engine || signal.provider || "database") + "</div>" +
+          "<div class='entity'>" + escapeHtml(title) + "</div>" +
+          "<div class='ev'>" + escapeHtml(signal.signal || "signal") + ": " +
+          escapeHtml(value) + " · " + escapeHtml(detail) + "</div></div>";
+      }).join("");
+    }
+
+    function renderIncidentTimeline(list) {
+      const el = $("incidentTimeline");
+      if (!list.length) {
+        el.innerHTML = "<div class='empty-state'>No correlated evidence is available in the current incident window.</div>";
+        return;
+      }
+      el.innerHTML = list.map((item) => {
+        const when = new Date(Number(item.at_unix_ms || 0)).toLocaleTimeString();
+        const reasons = (item.correlation_reasons || []).map((reason) =>
+          String(reason).replaceAll("_", " ")
+        ).join(" · ");
+        return "<div class='cause-card' style='width:100%'>" +
+          "<div class='tag'>" + escapeHtml(when) + " · " + escapeHtml(item.module || "evidence") +
+          " · " + escapeHtml(item.severity || "info") + "</div>" +
+          "<div class='entity'>" + escapeHtml(item.service || "Unmapped service") + "</div>" +
+          "<div class='ev'>" + escapeHtml(item.summary || item.type || "Event") + "</div>" +
+          "<div class='ev'>Why linked: " + escapeHtml(reasons || "within incident window") + "</div></div>";
       }).join("");
     }
 
@@ -1417,7 +1478,9 @@
         renderTraceFocus(incident, graph, anom.anomalies || []);
         renderGraph(graph);
         renderCauses(incident.top_causes || []);
+        renderIncidentTimeline(incident.timeline || []);
         renderLogEvidence(incident.log_evidence || []);
+        renderDatabaseEvidence(incident.database_evidence || []);
         renderAnomalies(anom.anomalies || []);
         renderInsight(explain, incident);
 

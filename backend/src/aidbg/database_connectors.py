@@ -129,7 +129,9 @@ def validate_source(
     config: dict[str, Any],
 ) -> dict[str, Any]:
     if not SAFE_NAME.fullmatch(name):
-        raise DatabaseSafetyError("source name may contain only letters, numbers, dots, dashes and underscores")
+        raise DatabaseSafetyError(
+            "source name may contain only letters, numbers, dots, dashes and underscores"
+        )
     if provider not in PROVIDER_CATALOG:
         raise DatabaseSafetyError("unsupported database provider")
     if engine not in ENGINE_CATALOG:
@@ -144,19 +146,15 @@ def validate_source(
         config.get("max_connections", 2), 1, 5, "max_connections"
     )
     normalized["max_rows"] = bounded_int(config.get("max_rows", 100), 1, 1000, "max_rows")
-    normalized["interval_s"] = bounded_int(
-        config.get("interval_s", 60), 15, 86400, "interval_s"
-    )
-    normalized["max_cycle_s"] = bounded_int(
-        config.get("max_cycle_s", 15), 1, 60, "max_cycle_s"
-    )
-    normalized["max_requests"] = bounded_int(
-        config.get("max_requests", 10), 1, 50, "max_requests"
-    )
+    normalized["interval_s"] = bounded_int(config.get("interval_s", 60), 15, 86400, "interval_s")
+    normalized["max_cycle_s"] = bounded_int(config.get("max_cycle_s", 15), 1, 60, "max_cycle_s")
+    normalized["max_requests"] = bounded_int(config.get("max_requests", 10), 1, 50, "max_requests")
     normalized["enabled"] = bool(config.get("enabled", False))
     if access_mode == "replica":
         if not ENGINE_CATALOG[engine].get("replica", False):
-            raise DatabaseSafetyError("this engine cannot be monitored through the replica connector")
+            raise DatabaseSafetyError(
+                "this engine cannot be monitored through the replica connector"
+            )
         if not config.get("host"):
             raise DatabaseSafetyError("replica mode requires a host")
         if bool(config.get("allow_primary", False)):
@@ -199,6 +197,20 @@ def fingerprint(text: str) -> str:
     normalized = re.sub(r"'(?:''|[^'])*'|\b\d+(?:\.\d+)?\b", "?", text)
     normalized = re.sub(r"\s+", " ", normalized).strip().lower()
     return hashlib.sha256(normalized.encode()).hexdigest()[:20]
+
+
+def cdc_operation(payload: dict[str, Any]) -> str:
+    """Return the change operation from common CDC event envelopes."""
+    envelope = payload.get("payload")
+    if not isinstance(envelope, dict):
+        envelope = payload
+    return str(
+        envelope.get("op")
+        or envelope.get("operationType")
+        or payload.get("op")
+        or payload.get("operationType")
+        or "unknown"
+    )
 
 
 def normalize_metric(name: str, value: float) -> tuple[str, str]:
@@ -262,7 +274,9 @@ class DirectReplicaConnector:
             try:
                 import pymysql
             except ImportError as exc:
-                raise ConnectorUnavailable("install the database connector extras for MySQL") from exc
+                raise ConnectorUnavailable(
+                    "install the database connector extras for MySQL"
+                ) from exc
             return pymysql.connect(
                 host=host,
                 port=port,
@@ -278,7 +292,9 @@ class DirectReplicaConnector:
             try:
                 import oracledb
             except ImportError as exc:
-                raise ConnectorUnavailable("install the database connector extras for Oracle") from exc
+                raise ConnectorUnavailable(
+                    "install the database connector extras for Oracle"
+                ) from exc
             return oracledb.connect(
                 user=username,
                 password=password,
@@ -301,12 +317,19 @@ class DirectReplicaConnector:
             try:
                 from pymongo import MongoClient
             except ImportError as exc:
-                raise ConnectorUnavailable("install pymongo for MongoDB replica monitoring") from exc
+                raise ConnectorUnavailable(
+                    "install pymongo for MongoDB replica monitoring"
+                ) from exc
             return MongoClient(
-                host, port, username=username or None, password=password or None,
+                host,
+                port,
+                username=username or None,
+                password=password or None,
                 authSource=self.config.get("auth_source", "admin"),
-                directConnection=True, readPreference="secondaryPreferred",
-                serverSelectionTimeoutMS=timeout * 1000, connectTimeoutMS=timeout * 1000,
+                directConnection=True,
+                readPreference="secondaryPreferred",
+                serverSelectionTimeoutMS=timeout * 1000,
+                connectTimeoutMS=timeout * 1000,
             )
         if self.engine == "redis":
             try:
@@ -314,9 +337,14 @@ class DirectReplicaConnector:
             except ImportError as exc:
                 raise ConnectorUnavailable("install redis for Redis replica monitoring") from exc
             return redis.Redis(
-                host=host, port=port, username=username or None, password=password or None,
-                db=int(self.config.get("database") or 0), socket_timeout=timeout,
-                socket_connect_timeout=timeout, decode_responses=True,
+                host=host,
+                port=port,
+                username=username or None,
+                password=password or None,
+                db=int(self.config.get("database") or 0),
+                socket_timeout=timeout,
+                socket_connect_timeout=timeout,
+                decode_responses=True,
             )
         raise ConnectorUnavailable(f"direct connector for {self.engine} is not available")
 
@@ -336,7 +364,15 @@ class DirectReplicaConnector:
             if not any(bool(value) for value in rows[0]):
                 raise DatabaseSafetyError("MySQL target is writable; connect a read replica")
             grants = [str(row[0]).upper() for row in self._query("SHOW GRANTS FOR CURRENT_USER")]
-            forbidden = (" INSERT", " UPDATE", " DELETE", " CREATE", " DROP", " ALTER", " ALL PRIVILEGES")
+            forbidden = (
+                " INSERT",
+                " UPDATE",
+                " DELETE",
+                " CREATE",
+                " DROP",
+                " ALTER",
+                " ALL PRIVILEGES",
+            )
             if any(any(item in grant for item in forbidden) for grant in grants):
                 raise DatabaseSafetyError("MySQL account has write privileges")
         elif self.engine == "oracle":
@@ -359,7 +395,10 @@ class DirectReplicaConnector:
                 status = client.admin.command("connectionStatus", showPrivileges=True)
                 write_actions = {"insert", "update", "remove", "createCollection", "dropCollection"}
                 actions = {
-                    action for privilege in status.get("authInfo", {}).get("authenticatedUserPrivileges", [])
+                    action
+                    for privilege in status.get("authInfo", {}).get(
+                        "authenticatedUserPrivileges", []
+                    )
                     for action in privilege.get("actions", [])
                 }
                 if actions & write_actions:
@@ -386,7 +425,9 @@ class DirectReplicaConnector:
         if self.engine == "mongodb":
             client = self._connect()
             try:
-                return [{"kind": "database", "value": value} for value in client.list_database_names()]
+                return [
+                    {"kind": "database", "value": value} for value in client.list_database_names()
+                ]
             finally:
                 client.close()
         if self.engine == "redis":
@@ -414,12 +455,20 @@ class DirectReplicaConnector:
                 "coalesce(max(extract(epoch FROM now() - query_start)), 0) "
                 "FROM pg_stat_activity WHERE pid <> pg_backend_pid()"
             )[0]
-            metrics = [("active_connections", row[0], "count"), ("waiting_sessions", row[1], "count"), ("longest_query", row[2], "seconds")]
+            metrics = [
+                ("active_connections", row[0], "count"),
+                ("waiting_sessions", row[1], "count"),
+                ("longest_query", row[2], "seconds"),
+            ]
         elif self.engine in {"mysql", "mariadb"}:
-            rows = self._query("SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected','Threads_running','Slow_queries')")
+            rows = self._query(
+                "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected','Threads_running','Slow_queries')"
+            )
             metrics = [(str(row[0]).lower(), float(row[1]), "count") for row in rows]
         elif self.engine == "oracle":
-            row = self._query("SELECT count(*), sum(CASE WHEN status='ACTIVE' THEN 1 ELSE 0 END) FROM v$session WHERE type='USER'")[0]
+            row = self._query(
+                "SELECT count(*), sum(CASE WHEN status='ACTIVE' THEN 1 ELSE 0 END) FROM v$session WHERE type='USER'"
+            )[0]
             metrics = [("connections", row[0], "count"), ("active_connections", row[1], "count")]
         elif self.engine == "mongodb":
             client = self._connect()
@@ -429,7 +478,11 @@ class DirectReplicaConnector:
                 metrics = [
                     ("connections", connections.get("current", 0), "count"),
                     ("connection_pressure", connections.get("active", 0), "count"),
-                    ("operation_latency", status.get("opLatencies", {}).get("reads", {}).get("latency", 0), "microseconds"),
+                    (
+                        "operation_latency",
+                        status.get("opLatencies", {}).get("reads", {}).get("latency", 0),
+                        "microseconds",
+                    ),
                 ]
             finally:
                 client.close()
@@ -445,7 +498,9 @@ class DirectReplicaConnector:
             finally:
                 client.close()
         else:
-            row = self._query("SELECT count(*) FROM sys.dm_exec_sessions WHERE is_user_process = 1")[0]
+            row = self._query(
+                "SELECT count(*) FROM sys.dm_exec_sessions WHERE is_user_process = 1"
+            )[0]
             metrics = [("connections", row[0], "count")]
         for metric, value, unit in metrics:
             normalized_metric, severity = normalize_metric(metric, float(value or 0))
@@ -479,7 +534,9 @@ class DirectReplicaConnector:
             try:
                 if self.engine in {"mysql", "mariadb"}:
                     cursor.execute("SET SESSION TRANSACTION READ ONLY")
-                    cursor.execute(f"SET SESSION MAX_EXECUTION_TIME={int(self.config['timeout_s']) * 1000}")
+                    cursor.execute(
+                        f"SET SESSION MAX_EXECUTION_TIME={int(self.config['timeout_s']) * 1000}"
+                    )
                 cursor.execute(statement)
                 rows = cursor.fetchmany(int(self.config["max_rows"]))
                 return [tuple(row) for row in rows]
@@ -520,13 +577,45 @@ def connector_for(
 
 class CloudMetricsConnector:
     METRICS: dict[str, list[str]] = {
-        "aws": ["CPUUtilization", "DatabaseConnections", "FreeStorageSpace", "ReadLatency", "WriteLatency", "ReplicaLag", "ThrottledRequests"],
-        "gcp": ["cpu/utilization", "database/network/connections", "disk/utilization", "replication/replica_lag"],
-        "azure": ["cpu_percent", "connections_active", "storage_percent", "replication_lag", "throttled_requests"],
-        "oci": ["CpuUtilization", "CurrentLogons", "StorageUtilization", "ApplyLag", "ThrottledRequests"],
+        "aws": [
+            "CPUUtilization",
+            "DatabaseConnections",
+            "FreeStorageSpace",
+            "ReadLatency",
+            "WriteLatency",
+            "ReplicaLag",
+            "ThrottledRequests",
+        ],
+        "gcp": [
+            "cpu/utilization",
+            "database/network/connections",
+            "disk/utilization",
+            "replication/replica_lag",
+        ],
+        "azure": [
+            "cpu_percent",
+            "connections_active",
+            "storage_percent",
+            "replication_lag",
+            "throttled_requests",
+        ],
+        "oci": [
+            "CpuUtilization",
+            "CurrentLogons",
+            "StorageUtilization",
+            "ApplyLag",
+            "ThrottledRequests",
+        ],
     }
 
-    def __init__(self, name: str, provider: str, engine: str, config: dict[str, Any], credentials: dict[str, str]) -> None:
+    def __init__(
+        self,
+        name: str,
+        provider: str,
+        engine: str,
+        config: dict[str, Any],
+        credentials: dict[str, str],
+    ) -> None:
         self.name = name
         self.provider = provider
         self.engine = engine
@@ -538,8 +627,11 @@ class CloudMetricsConnector:
             raise DatabaseSafetyError("cloud metrics require AWS, GCP, Azure, or OCI")
         points = self._collect_points()
         return {
-            "ok": True, "cloud_metrics": True, "provider": self.provider,
-            "resource": self.config["resource_id"], "metrics_found": len(points),
+            "ok": True,
+            "cloud_metrics": True,
+            "provider": self.provider,
+            "resource": self.config["resource_id"],
+            "metrics_found": len(points),
         }
 
     def discover(self) -> list[dict[str, str]]:
@@ -555,9 +647,15 @@ class CloudMetricsConnector:
             metric, inferred_severity = normalize_metric(str(point["metric"]), value)
             signals.append(
                 DatabaseSignal(
-                    self.name, self.provider, self.engine, str(self.config["resource_id"]),
-                    str(self.config.get("database") or ""), metric,
-                    point.get("severity", inferred_severity), value, point.get("unit", "count"),
+                    self.name,
+                    self.provider,
+                    self.engine,
+                    str(self.config["resource_id"]),
+                    str(self.config.get("database") or ""),
+                    metric,
+                    point.get("severity", inferred_severity),
+                    value,
+                    point.get("unit", "count"),
                     int(point.get("observed_at_unix_ms") or now_ms),
                     {"access_mode": "cloud_metrics", "provider_metric": point["metric"]},
                 )
@@ -596,10 +694,37 @@ class CloudMetricsConnector:
             aws_session_token=self.credentials.get("session_token") or None,
         )
         service_defaults = {
-            "dynamodb": ("AWS/DynamoDB", "TableName", ["ConsumedReadCapacityUnits", "ThrottledRequests", "SystemErrors"]),
-            "documentdb": ("AWS/DocDB", "DBClusterIdentifier", ["CPUUtilization", "DatabaseConnections", "FreeLocalStorage", "ReadLatency", "WriteLatency"]),
-            "elasticache-redis": ("AWS/ElastiCache", "CacheClusterId", ["CPUUtilization", "CurrConnections", "DatabaseMemoryUsagePercentage", "ReplicationLag"]),
-            "redshift": ("AWS/Redshift", "ClusterIdentifier", ["CPUUtilization", "DatabaseConnections", "HealthStatus", "ReadIOPS", "WriteIOPS"]),
+            "dynamodb": (
+                "AWS/DynamoDB",
+                "TableName",
+                ["ConsumedReadCapacityUnits", "ThrottledRequests", "SystemErrors"],
+            ),
+            "documentdb": (
+                "AWS/DocDB",
+                "DBClusterIdentifier",
+                [
+                    "CPUUtilization",
+                    "DatabaseConnections",
+                    "FreeLocalStorage",
+                    "ReadLatency",
+                    "WriteLatency",
+                ],
+            ),
+            "elasticache-redis": (
+                "AWS/ElastiCache",
+                "CacheClusterId",
+                [
+                    "CPUUtilization",
+                    "CurrConnections",
+                    "DatabaseMemoryUsagePercentage",
+                    "ReplicationLag",
+                ],
+            ),
+            "redshift": (
+                "AWS/Redshift",
+                "ClusterIdentifier",
+                ["CPUUtilization", "DatabaseConnections", "HealthStatus", "ReadIOPS", "WriteIOPS"],
+            ),
             "aurora-postgresql": ("AWS/RDS", "DBClusterIdentifier", self.METRICS["aws"]),
             "aurora-mysql": ("AWS/RDS", "DBClusterIdentifier", self.METRICS["aws"]),
         }
@@ -624,7 +749,13 @@ class CloudMetricsConnector:
             datapoints = response.get("Datapoints") or []
             if datapoints:
                 latest = max(datapoints, key=lambda item: item["Timestamp"])
-                points.append({"metric": metric, "value": latest["Average"], "unit": latest.get("Unit", "count")})
+                points.append(
+                    {
+                        "metric": metric,
+                        "value": latest["Average"],
+                        "unit": latest.get("Unit", "count"),
+                    }
+                )
         return points
 
     def _gcp_points(self) -> list[dict[str, Any]]:
@@ -648,10 +779,26 @@ class CloudMetricsConnector:
         resource_id = str(self.config["resource_id"])
         points: list[dict[str, Any]] = []
         service_defaults = {
-            "alloydb": ("alloydb.googleapis.com/database/", "instance_id", ["cpu/utilization", "memory/quota", "postgresql/num_backends"]),
-            "spanner": ("spanner.googleapis.com/instance/", "instance_id", ["cpu/utilization_by_priority", "node_count", "storage/used_bytes"]),
-            "firestore": ("firestore.googleapis.com/document/", "database_id", ["read_count", "write_count", "delete_count"]),
-            "memorystore-redis": ("redis.googleapis.com/stats/", "instance_id", ["cpu_utilization", "memory/usage_ratio", "clients/connected"]),
+            "alloydb": (
+                "alloydb.googleapis.com/database/",
+                "instance_id",
+                ["cpu/utilization", "memory/quota", "postgresql/num_backends"],
+            ),
+            "spanner": (
+                "spanner.googleapis.com/instance/",
+                "instance_id",
+                ["cpu/utilization_by_priority", "node_count", "storage/used_bytes"],
+            ),
+            "firestore": (
+                "firestore.googleapis.com/document/",
+                "database_id",
+                ["read_count", "write_count", "delete_count"],
+            ),
+            "memorystore-redis": (
+                "redis.googleapis.com/stats/",
+                "instance_id",
+                ["cpu_utilization", "memory/usage_ratio", "clients/connected"],
+            ),
         }
         default_prefix, default_label, default_metrics = service_defaults.get(
             self.engine,
@@ -674,7 +821,9 @@ class CloudMetricsConnector:
                     continue
                 value = item.points[0].value
                 number = value.double_value or value.int64_value
-                points.append({"metric": metric, "value": number, "unit": item.metric_kind.name.lower()})
+                points.append(
+                    {"metric": metric, "value": number, "unit": item.metric_kind.name.lower()}
+                )
                 break
         return points
 
@@ -683,7 +832,9 @@ class CloudMetricsConnector:
             from azure.identity import ClientSecretCredential, DefaultAzureCredential
             from azure.monitor.query import MetricsQueryClient
         except ImportError as exc:
-            raise ConnectorUnavailable("install azure-identity and azure-monitor-query for Azure metrics") from exc
+            raise ConnectorUnavailable(
+                "install azure-identity and azure-monitor-query for Azure metrics"
+            ) from exc
         if self.credentials.get("client_secret"):
             credential = ClientSecretCredential(
                 tenant_id=self.credentials.get("tenant_id", ""),
@@ -699,9 +850,16 @@ class CloudMetricsConnector:
         )
         points: list[dict[str, Any]] = []
         for metric in response.metrics:
-            values = [point.average for series in metric.timeseries for point in series.data if point.average is not None]
+            values = [
+                point.average
+                for series in metric.timeseries
+                for point in series.data
+                if point.average is not None
+            ]
             if values:
-                points.append({"metric": metric.name, "value": values[-1], "unit": str(metric.unit)})
+                points.append(
+                    {"metric": metric.name, "value": values[-1], "unit": str(metric.unit)}
+                )
         return points
 
     def _oci_points(self) -> list[dict[str, Any]]:
@@ -737,7 +895,14 @@ class CloudMetricsConnector:
 
 
 class CDCConnector:
-    def __init__(self, name: str, provider: str, engine: str, config: dict[str, Any], credentials: dict[str, str]) -> None:
+    def __init__(
+        self,
+        name: str,
+        provider: str,
+        engine: str,
+        config: dict[str, Any],
+        credentials: dict[str, str],
+    ) -> None:
         self.name = name
         self.provider = provider
         self.engine = engine
@@ -761,8 +926,11 @@ class CDCConnector:
         finally:
             consumer.close()
         return {
-            "ok": True, "read_only": True, "commit_offsets": False,
-            "topic": self.config["topic"], "partitions": partitions,
+            "ok": True,
+            "read_only": True,
+            "commit_offsets": False,
+            "topic": self.config["topic"],
+            "partitions": partitions,
         }
 
     def discover(self) -> list[dict[str, str]]:
@@ -791,7 +959,7 @@ class CDCConnector:
                     payload = json.loads(message.value() or b"{}")
                 except json.JSONDecodeError:
                     payload = {}
-                operation = str(payload.get("op") or payload.get("operationType") or "unknown")
+                operation = cdc_operation(payload)
                 counts[operation] = counts.get(operation, 0) + 1
         finally:
             consumer.close()

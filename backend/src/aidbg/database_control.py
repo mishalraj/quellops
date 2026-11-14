@@ -18,7 +18,7 @@ from .database_connectors import (
 from .database_discovery import discover_cloud_resources
 from .database_store import DatabaseStore, create_database_store
 from .database_watcher import DatabaseWatcher
-from .engine import ChangeEvent, SignalStore
+from .engine import ChangeEvent, DatabaseEvidence, SignalStore
 
 
 class SourceInput(BaseModel):
@@ -43,6 +43,10 @@ class DiscoveryInput(BaseModel):
     credentials: dict[str, str] = Field(default_factory=dict)
 
 
+class CredentialRotationInput(BaseModel):
+    credentials: dict[str, str] = Field(default_factory=dict)
+
+
 def router(
     admin_token: str,
     master_key: str,
@@ -55,6 +59,25 @@ def router(
     store = create_database_store(db_path, master_key, database_url) if enabled else None
 
     def observe(signal: dict) -> None:
+        source = (
+            store.get_source(str(signal["source"]), include_credentials=False) if store else None
+        )
+        signals.add_database_signal(
+            DatabaseEvidence(
+                source=str(signal["source"]),
+                provider=str(signal["provider"]),
+                engine=str(signal["engine"]),
+                service=str((source or {}).get("service") or ""),
+                resource=str(signal.get("resource") or signal["source"]),
+                database=str(signal.get("database") or ""),
+                signal=str(signal["signal"]),
+                severity=str(signal["severity"]),
+                value=signal.get("value"),
+                unit=str(signal.get("unit") or ""),
+                observed_at_unix_ms=int(signal["observed_at_unix_ms"]),
+                evidence=dict(signal.get("evidence") or {}),
+            )
+        )
         signals.add_change_event(
             ChangeEvent(
                 kind=f"db.{signal['signal']}",
@@ -62,9 +85,12 @@ def router(
                 entity=str(signal.get("resource") or signal["source"]),
                 namespace=signal.get("database") or None,
                 metadata={
-                    "source": signal["source"], "provider": signal["provider"],
-                    "engine": signal["engine"], "severity": signal["severity"],
-                    "value": signal["value"], "unit": signal["unit"],
+                    "source": signal["source"],
+                    "provider": signal["provider"],
+                    "engine": signal["engine"],
+                    "severity": signal["severity"],
+                    "value": signal["value"],
+                    "unit": signal["unit"],
                     "evidence": signal.get("evidence", {}),
                 },
             )
@@ -108,8 +134,14 @@ def router(
                 payload.name, payload.provider, payload.engine, payload.access_mode, payload.config
             )
             return connector_for(
-                payload.name, payload.provider, payload.engine, payload.access_mode,
-                safe, credentials if credentials is not None else {
+                payload.name,
+                payload.provider,
+                payload.engine,
+                payload.access_mode,
+                safe,
+                credentials
+                if credentials is not None
+                else {
                     key: value for key, value in payload.credentials.items() if value is not None
                 },
             ), safe
@@ -119,45 +151,68 @@ def router(
     @result.get("/catalog")
     def catalog(authorization: str | None = Header(default=None)):
         authorize(authorization)
-        return {"providers": PROVIDER_CATALOG, "engines": ENGINE_CATALOG, "access_modes": {
-            "cloud_metrics": "Provider monitoring APIs; no database query",
-            "replica": "Read-only health queries against a verified replica",
-            "cdc": "Observe an existing CDC topic without committing offsets",
-        }}
+        return {
+            "providers": PROVIDER_CATALOG,
+            "engines": ENGINE_CATALOG,
+            "access_modes": {
+                "cloud_metrics": "Provider monitoring APIs; no database query",
+                "replica": "Read-only health queries against a verified replica",
+                "cdc": "Observe an existing CDC topic without committing offsets",
+            },
+        }
 
     @result.get("/sources")
     def list_sources(authorization: str | None = Header(default=None)):
         authorize(authorization)
-        return {"sources": required_store().list_sources(), "watchers": required_store().list_watchers()}
+        return {
+            "sources": required_store().list_sources(),
+            "watchers": required_store().list_watchers(),
+        }
 
     @result.post("/discover")
-    def discover_resources(payload: DiscoveryInput, authorization: str | None = Header(default=None)):
+    def discover_resources(
+        payload: DiscoveryInput, authorization: str | None = Header(default=None)
+    ):
         authorize(authorization)
         if payload.provider not in PROVIDER_CATALOG or payload.provider == "self_hosted":
             raise HTTPException(400, "cloud resource discovery requires AWS, GCP, Azure, or OCI")
         if payload.engine not in ENGINE_CATALOG:
             raise HTTPException(400, "unsupported database engine")
-        if len(json.dumps(payload.config)) > 65_536 or len(json.dumps(payload.credentials)) > 65_536:
+        if (
+            len(json.dumps(payload.config)) > 65_536
+            or len(json.dumps(payload.credentials)) > 65_536
+        ):
             raise HTTPException(413, "discovery configuration is too large")
         try:
-            return {"resources": discover_cloud_resources(
-                payload.provider, payload.engine, payload.config, payload.credentials
-            )}
+            return {
+                "resources": discover_cloud_resources(
+                    payload.provider, payload.engine, payload.config, payload.credentials
+                )
+            }
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
 
     @result.put("/sources/{name}")
-    def save_source(name: str, payload: SourceInput, authorization: str | None = Header(default=None)):
+    def save_source(
+        name: str, payload: SourceInput, authorization: str | None = Header(default=None)
+    ):
         authorize(authorization)
         if name != payload.name:
             raise HTTPException(400, "path and source name must match")
         existing = required_store().get_source(name)
         credentials = dict((existing or {}).get("credentials", {}))
-        credentials.update({key: value for key, value in payload.credentials.items() if value is not None})
+        credentials.update(
+            {key: value for key, value in payload.credentials.items() if value is not None}
+        )
         _, safe = build(payload, credentials)
         return required_store().upsert_source(
-            name, payload.provider, payload.engine, payload.access_mode, payload.service,
-            safe, credentials,
+            name,
+            payload.provider,
+            payload.engine,
+            payload.access_mode,
+            payload.service,
+            safe,
+            credentials,
         )
 
     @result.delete("/sources/{name}")
@@ -173,8 +228,12 @@ def router(
             raise HTTPException(404, "database source was not found")
         try:
             return connector_for(
-                source["name"], source["provider"], source["engine"],
-                source["access_mode"], source["config"], source["credentials"],
+                source["name"],
+                source["provider"],
+                source["engine"],
+                source["access_mode"],
+                source["config"],
+                source["credentials"],
             )
         except DatabaseSafetyError as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -187,6 +246,35 @@ def router(
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @result.post("/sources/{name}/credentials/rotate")
+    def rotate_credentials(
+        name: str,
+        payload: CredentialRotationInput,
+        authorization: str | None = Header(default=None),
+    ):
+        authorize(authorization)
+        if not payload.credentials or not all(payload.credentials.values()):
+            raise HTTPException(400, "replacement credentials must contain non-empty values")
+        if len(json.dumps(payload.credentials)) > 65_536:
+            raise HTTPException(413, "database credentials are too large")
+        source = required_store().get_source(name)
+        if source is None:
+            raise HTTPException(404, "database source was not found")
+        try:
+            candidate = connector_for(
+                source["name"],
+                source["provider"],
+                source["engine"],
+                source["access_mode"],
+                source["config"],
+                payload.credentials,
+            )
+            verification = candidate.verify()
+        except Exception as exc:
+            raise HTTPException(400, f"replacement credentials failed verification: {exc}") from exc
+        saved = required_store().rotate_credentials(name, payload.credentials)
+        return {"ok": True, "source": saved, "verification": verification}
+
     @result.get("/sources/{name}/discover")
     def discover(name: str, authorization: str | None = Header(default=None)):
         authorize(authorization)
@@ -196,7 +284,9 @@ def router(
             raise HTTPException(400, str(exc)) from exc
 
     @result.put("/sources/{name}/watcher")
-    def configure_watcher(name: str, payload: WatcherInput, authorization: str | None = Header(default=None)):
+    def configure_watcher(
+        name: str, payload: WatcherInput, authorization: str | None = Header(default=None)
+    ):
         authorize(authorization)
         if required_store().get_source(name) is None:
             raise HTTPException(404, "database source was not found")
@@ -213,12 +303,20 @@ def router(
         return response
 
     @result.get("/signals")
-    def recent_signals(source: str | None = None, limit: int = 100, authorization: str | None = Header(default=None)):
+    def recent_signals(
+        source: str | None = None,
+        limit: int = 100,
+        authorization: str | None = Header(default=None),
+    ):
         authorize(authorization)
         return {"signals": required_store().list_signals(source, max(1, min(limit, 1000)))}
 
     @result.get("/history")
-    def history(source: str | None = None, limit: int = 1000, authorization: str | None = Header(default=None)):
+    def history(
+        source: str | None = None,
+        limit: int = 1000,
+        authorization: str | None = Header(default=None),
+    ):
         authorize(authorization)
         items = required_store().list_signals(source, max(10, min(limit, 5000)))
         return {"series": history_series(items)}

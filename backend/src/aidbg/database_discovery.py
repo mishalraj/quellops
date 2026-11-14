@@ -14,7 +14,10 @@ def discover_cloud_resources(
 ) -> list[dict[str, str]]:
     injected = config.get("test_resources")
     if isinstance(injected, list):
-        return [_resource(item.get("id", ""), item.get("name", ""), item.get("region", "")) for item in injected][:500]
+        return [
+            _resource(item.get("id", ""), item.get("name", ""), item.get("region", ""))
+            for item in injected
+        ][:500]
     if provider == "aws":
         return _aws(engine, config, credentials)
     if provider == "gcp":
@@ -54,27 +57,53 @@ def _aws(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> li
             for item in page.get("DBInstances", []):
                 if item.get("Engine") not in expected_engines:
                     continue
-                resources.append(_resource(item["DBInstanceIdentifier"], item["DBInstanceIdentifier"], item.get("AvailabilityZone")))
+                resources.append(
+                    _resource(
+                        item["DBInstanceIdentifier"],
+                        item["DBInstanceIdentifier"],
+                        item.get("AvailabilityZone"),
+                    )
+                )
     elif engine in {"aurora-postgresql", "aurora-mysql", "documentdb"}:
         service = "docdb" if engine == "documentdb" else "rds"
         pages = session.client(service).get_paginator("describe_db_clusters").paginate()
         for page in pages:
             for item in page.get("DBClusters", []):
-                resources.append(_resource(item["DBClusterIdentifier"], item["DBClusterIdentifier"], config.get("region")))
+                resources.append(
+                    _resource(
+                        item["DBClusterIdentifier"],
+                        item["DBClusterIdentifier"],
+                        config.get("region"),
+                    )
+                )
     elif engine == "dynamodb":
         pages = session.client("dynamodb").get_paginator("list_tables").paginate()
         for page in pages:
-            resources.extend(_resource(name, name, config.get("region")) for name in page.get("TableNames", []))
+            resources.extend(
+                _resource(name, name, config.get("region")) for name in page.get("TableNames", [])
+            )
     elif engine == "elasticache-redis":
         pages = session.client("elasticache").get_paginator("describe_cache_clusters").paginate()
         for page in pages:
             for item in page.get("CacheClusters", []):
-                resources.append(_resource(item["CacheClusterId"], item["CacheClusterId"], item.get("PreferredAvailabilityZone")))
+                resources.append(
+                    _resource(
+                        item["CacheClusterId"],
+                        item["CacheClusterId"],
+                        item.get("PreferredAvailabilityZone"),
+                    )
+                )
     elif engine == "redshift":
         pages = session.client("redshift").get_paginator("describe_clusters").paginate()
         for page in pages:
             for item in page.get("Clusters", []):
-                resources.append(_resource(item["ClusterIdentifier"], item["ClusterIdentifier"], item.get("AvailabilityZone")))
+                resources.append(
+                    _resource(
+                        item["ClusterIdentifier"],
+                        item["ClusterIdentifier"],
+                        item.get("AvailabilityZone"),
+                    )
+                )
     else:
         raise DatabaseSafetyError("the selected AWS engine does not support cloud discovery")
     return resources[:500]
@@ -118,7 +147,9 @@ def _gcp(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> li
     return resources[:500]
 
 
-def _azure(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> list[dict[str, str]]:
+def _azure(
+    engine: str, config: dict[str, Any], credentials: dict[str, str]
+) -> list[dict[str, str]]:
     try:
         from azure.identity import ClientSecretCredential, DefaultAzureCredential
         from azure.mgmt.resource import ResourceManagementClient
@@ -128,8 +159,13 @@ def _azure(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> 
     if not subscription:
         raise DatabaseSafetyError("Azure discovery requires subscription_id")
     credential = (
-        ClientSecretCredential(credentials.get("tenant_id", ""), credentials.get("client_id", ""), credentials["client_secret"])
-        if credentials.get("client_secret") else DefaultAzureCredential()
+        ClientSecretCredential(
+            credentials.get("tenant_id", ""),
+            credentials.get("client_id", ""),
+            credentials["client_secret"],
+        )
+        if credentials.get("client_secret")
+        else DefaultAzureCredential()
     )
     resource_types = {
         "azure-sql": "Microsoft.Sql/servers/databases",
@@ -142,7 +178,11 @@ def _azure(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> 
     if not expected:
         raise DatabaseSafetyError("the selected Azure engine does not support cloud discovery")
     client = ResourceManagementClient(credential, subscription)
-    return [_resource(item.id, item.name, item.location) for item in client.resources.list() if str(item.type).lower() == expected.lower()][:500]
+    return [
+        _resource(item.id, item.name, item.location)
+        for item in client.resources.list()
+        if str(item.type).lower() == expected.lower()
+    ][:500]
 
 
 def _oci(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> list[dict[str, str]]:
@@ -153,15 +193,29 @@ def _oci(engine: str, config: dict[str, Any], credentials: dict[str, str]) -> li
     compartment = str(config.get("compartment_id") or "")
     if not compartment:
         raise DatabaseSafetyError("OCI discovery requires compartment_id")
-    oci_config = json.loads(credentials["config_json"]) if credentials.get("config_json") else oci.config.from_file(
-        file_location=config.get("oci_config_file", oci.config.DEFAULT_LOCATION),
-        profile_name=config.get("oci_profile", "DEFAULT"),
+    oci_config = (
+        json.loads(credentials["config_json"])
+        if credentials.get("config_json")
+        else oci.config.from_file(
+            file_location=config.get("oci_config_file", oci.config.DEFAULT_LOCATION),
+            profile_name=config.get("oci_profile", "DEFAULT"),
+        )
     )
-    types = {"oci-autonomous": "AutonomousDatabase", "oci-database": "Database", "oci-nosql": "NosqlTable"}
+    types = {
+        "oci-autonomous": "AutonomousDatabase",
+        "oci-database": "Database",
+        "oci-nosql": "NosqlTable",
+    }
     resource_type = types.get(engine)
     if not resource_type:
         raise DatabaseSafetyError("the selected OCI engine does not support cloud discovery")
     client = oci.resource_search.ResourceSearchClient(oci_config)
     query = f"query {resource_type} resources where compartmentId = '{compartment}'"
-    response = client.search_resources(oci.resource_search.models.StructuredSearchDetails(query=query, type="Structured"), limit=500)
-    return [_resource(item.identifier, item.display_name, item.availability_domain) for item in response.data.items][:500]
+    response = client.search_resources(
+        oci.resource_search.models.StructuredSearchDetails(query=query, type="Structured"),
+        limit=500,
+    )
+    return [
+        _resource(item.identifier, item.display_name, item.availability_domain)
+        for item in response.data.items
+    ][:500]
