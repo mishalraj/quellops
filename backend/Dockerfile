@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.15-slim
 WORKDIR /app
 COPY backend/requirements.txt /app/requirements.txt
 COPY backend/requirements-databases.txt /app/requirements-databases.txt
